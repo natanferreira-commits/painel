@@ -33,13 +33,26 @@ function normalize(ev: SendPulseEvent) {
   const operator = (ev.operator as Record<string, unknown>) ?? {};
   const info = (ev.info as Record<string, unknown>) ?? {};
 
-  const dateMs = Number(ev.date);
-  const occurred_at = Number.isFinite(dateMs)
-    ? new Date(dateMs).toISOString()
+  // O SendPulse manda a data em segundos (10 digitos). Datas em ms tem ~13.
+  // Se vier abaixo de 1e12, tratamos como segundos e multiplicamos.
+  const rawDate = Number(ev.date);
+  const ms = Number.isFinite(rawDate)
+    ? rawDate > 1e12
+      ? rawDate
+      : rawDate * 1000
+    : NaN;
+  const occurred_at = Number.isFinite(ms)
+    ? new Date(ms).toISOString()
     : new Date().toISOString();
 
+  // O texto pode vir aninhado (Telegram: info.message.channel_data.message.text)
+  // ou direto. Caimos pra last_message do contato como ultimo recurso.
   const infoMessage = (info.message as Record<string, unknown>) ?? {};
+  const channelData =
+    (infoMessage.channel_data as Record<string, unknown>) ?? {};
+  const channelMsg = (channelData.message as Record<string, unknown>) ?? {};
   const text =
+    (channelMsg.text as string) ??
     (infoMessage.text as string) ??
     (info.text as string) ??
     (contact.last_message as string) ??
@@ -56,7 +69,7 @@ function normalize(ev: SendPulseEvent) {
     direction,
     text,
     tags,
-    flow_tag: null as string | null,
+    flow_tag: (tags[0] as string | undefined) ?? null,
     event_title: title || null,
     service: asString(ev.service),
     occurred_at,
