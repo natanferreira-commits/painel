@@ -9,9 +9,14 @@ export function WaitTimer({ since }: { since: string }) {
   const [now, setNow] = useState(() => new Date(since).getTime());
 
   useEffect(() => {
-    setNow(Date.now());
+    // setState so de forma assincrona (timeout/intervalo), pra nao disparar
+    // render em cascata. O timeout(0) corrige o valor logo apos montar.
+    const t = setTimeout(() => setNow(Date.now()), 0);
     const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
+    return () => {
+      clearTimeout(t);
+      clearInterval(id);
+    };
   }, []);
 
   const elapsed = Math.max(0, now - new Date(since).getTime());

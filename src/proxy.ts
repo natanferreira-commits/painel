@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 // Protege o painel com uma senha simples (HTTP Basic Auth).
 // Se PANEL_PASSWORD nao estiver definido (ex: dev local), nao bloqueia.
 // O webhook /api/sendpulse fica de fora pra o SendPulse conseguir postar.
-export function middleware(req: NextRequest) {
+// (No Next 16 esse arquivo se chama "proxy", antes era "middleware".)
+export function proxy(req: NextRequest) {
   const password = process.env.PANEL_PASSWORD;
   if (!password) return NextResponse.next();
 
