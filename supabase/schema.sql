@@ -38,3 +38,10 @@ create index if not exists idx_msg_bot on messages_support (sendpulse_bot_id);
 -- Liga o Realtime na tabela de mensagens (o "ping" do painel).
 -- Se der erro dizendo que ja existe, pode ignorar.
 alter publication supabase_realtime add table messages_support;
+
+-- Caixa-preta: payload cru de todo evento recebido do SendPulse (auditoria e debug).
+create table if not exists webhook_events (
+  id bigint generated always as identity primary key,
+  received_at timestamptz not null default now(),
+  body jsonb not null
+);

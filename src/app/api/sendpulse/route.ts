@@ -65,13 +65,6 @@ function normalize(ev: SendPulseEvent) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!checkSecret(req)) {
-    return NextResponse.json(
-      { ok: false, error: "invalid secret" },
-      { status: 401 },
-    );
-  }
-
   let body: unknown;
   try {
     body = await req.json();
@@ -79,6 +72,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { ok: false, error: "invalid json" },
       { status: 400 },
+    );
+  }
+
+  // Caixa-preta: guarda o payload cru de TUDO que chega (antes do segredo e do
+  // filtro), pra auditoria e debug. Best-effort: nunca derruba o webhook.
+  try {
+    await getSupabaseAdmin().from("webhook_events").insert({ body });
+  } catch {
+    // ignora falha de log
+  }
+
+  if (!checkSecret(req)) {
+    return NextResponse.json(
+      { ok: false, error: "invalid secret" },
+      { status: 401 },
     );
   }
 
