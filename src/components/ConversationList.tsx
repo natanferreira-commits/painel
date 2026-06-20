@@ -32,6 +32,7 @@ export function ConversationList({
             ? slaLevel(now - new Date(c.waitingSince).getTime())
             : null;
         const accent = level ? slaBar[level] : "bg-neutral-700";
+        const isCritical = level === "red";
         const preview =
           (c.lastDirection === "out" ? "Você: " : "") + (c.lastText ?? "");
 
@@ -39,7 +40,11 @@ export function ConversationList({
           <li key={c.contactId}>
             <Link
               href={`/conversa/${encodeURIComponent(c.contactId)}`}
-              className="group relative block overflow-hidden rounded-xl border border-neutral-800/80 bg-neutral-900/50 transition-colors hover:border-neutral-700 hover:bg-neutral-900"
+              className={`group relative block overflow-hidden rounded-xl border transition-colors ${
+                isCritical
+                  ? "border-red-900/60 bg-red-950/20 hover:bg-red-950/30"
+                  : "border-neutral-800/80 bg-neutral-900/50 hover:border-neutral-700 hover:bg-neutral-900"
+              }`}
             >
               <span
                 aria-hidden
@@ -55,6 +60,11 @@ export function ConversationList({
                     <span className="truncate font-medium">
                       {c.contactName ?? "Sem nome"}
                     </span>
+                    {isCritical && (
+                      <span className="shrink-0 rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-300">
+                        crítico
+                      </span>
+                    )}
                     {c.flowTag && (
                       <span className="shrink-0 rounded-full bg-violet-500/15 px-2 py-0.5 text-xs font-medium text-violet-300">
                         {c.flowTag}

@@ -1,6 +1,6 @@
 // Limiares de SLA (em ms). Ajustar quando souber o tempo aceitavel real.
-export const SLA_AMBER_MS = 30 * 60 * 1000; // 30 min
-export const SLA_RED_MS = 2 * 60 * 60 * 1000; // 2 h
+export const SLA_AMBER_MS = 60 * 60 * 1000; // 1 h (alerta amarelo)
+export const SLA_RED_MS = 3 * 60 * 60 * 1000; // 3 h (critico/estourado)
 
 export type SlaLevel = "green" | "amber" | "red";
 
