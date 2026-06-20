@@ -3,13 +3,8 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 
-// Segredo opcional. Se SENDPULSE_WEBHOOK_SECRET estiver setado,
-// a gente exige ?secret=... na URL configurada no SendPulse.
-function checkSecret(req: NextRequest): boolean {
-  const expected = process.env.SENDPULSE_WEBHOOK_SECRET;
-  if (!expected) return true;
-  return req.nextUrl.searchParams.get("secret") === expected;
-}
+// Trava do segredo desativada por enquanto pra destravar a integracao.
+// TODO: readicionar uma protecao verificavel (header secreto ou allowlist).
 
 type SendPulseEvent = Record<string, unknown>;
 
@@ -96,12 +91,6 @@ export async function POST(req: NextRequest) {
     // ignora falha de log
   }
 
-  if (!checkSecret(req)) {
-    return NextResponse.json(
-      { ok: false, error: "invalid secret" },
-      { status: 401 },
-    );
-  }
 
   const events: SendPulseEvent[] = Array.isArray(body)
     ? (body as SendPulseEvent[])
