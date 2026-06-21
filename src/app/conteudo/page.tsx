@@ -1,7 +1,7 @@
-import { getPosts, getPostChannels, type PostItem } from "@/lib/posts";
-import { PostsFilter } from "@/components/PostsFilter";
-import { affiliateColors, affiliateLabel } from "@/lib/affiliate";
-import { formatDayPt, formatTimePt } from "@/lib/time";
+import { getPostChannels } from "@/lib/posts";
+import { getTimelines, type Bucket } from "@/lib/analytics";
+import { ChartFilter } from "@/components/ChartFilter";
+import { StackedBars, CategoryLegend } from "@/components/StackedBars";
 
 export const dynamic = "force-dynamic";
 
@@ -15,178 +15,103 @@ function str(v: string | string[] | undefined): string | undefined {
   return typeof v === "string" && v ? v : undefined;
 }
 
-const MEDIA_LABEL: Record<string, string> = {
-  photo: "foto",
-  video: "vídeo",
-  video_note: "vídeo bolinha",
-  animation: "gif",
-  voice: "áudio",
-  audio: "áudio",
-  document: "arquivo",
-  poll: "enquete",
-};
-
-const TIPO_LABEL: Record<string, string> = {
-  dica: "dica",
-  analise: "análise",
-  promo: "promo",
-  prova_social: "prova social",
-  motivacional: "motivacional",
-  cta_cadastro: "cadastro (CTA)",
-  educacional: "educacional",
-  interacao: "interação",
-  outro: "outro",
-};
-
-const GATILHO_LABEL: Record<string, string> = {
-  urgencia: "urgência",
-  autoridade: "autoridade",
-  escassez: "escassez",
-  proximidade: "proximidade",
-};
-
 export default async function ConteudoPage({
   searchParams,
 }: {
   searchParams: SP;
 }) {
   const sp = await searchParams;
-  const filters = { channelId: str(sp.canal), q: str(sp.q) };
+  const bucket = sp.periodo === "semana" ? "week" : "day";
+  const canal = str(sp.canal);
 
-  let posts: PostItem[] = [];
+  let timelines: Awaited<ReturnType<typeof getTimelines>> | null = null;
   let channels: Awaited<ReturnType<typeof getPostChannels>> = [];
   let error: string | null = null;
 
   try {
-    [posts, channels] = await Promise.all([
-      getPosts(filters),
+    [timelines, channels] = await Promise.all([
+      getTimelines(bucket),
       getPostChannels(),
     ]);
   } catch (e) {
     error = e instanceof Error ? e.message : "erro desconhecido";
   }
 
-  // Agrupa por dia, mantendo a ordem (mais recente primeiro).
-  const groups: { day: string; items: PostItem[] }[] = [];
-  for (const p of posts) {
-    const day = formatDayPt(p.postedAt);
-    let g = groups[groups.length - 1];
-    if (!g || g.day !== day) {
-      g = { day, items: [] };
-      groups.push(g);
+  let buckets: Bucket[] = [];
+  let maxTotal = 1;
+  let totalPosts = 0;
+  let canalNome: string | null = null;
+
+  if (timelines) {
+    if (canal) {
+      const ch = timelines.channels.find((c) => c.channelId === canal);
+      buckets =
+        ch?.buckets ??
+        timelines.keys.map((k) => ({
+          key: k.key,
+          label: k.label,
+          total: 0,
+          byTipo: {},
+        }));
+      maxTotal = Math.max(1, ...buckets.map((b) => b.total));
+      totalPosts = ch?.total ?? 0;
+      canalNome = ch?.channelTitle ?? canal;
+    } else {
+      buckets = timelines.aggregate;
+      maxTotal = timelines.maxAggregateBucket;
+      totalPosts = buckets.reduce((s, b) => s + b.total, 0);
     }
-    g.items.push(p);
   }
 
+  const tiposPresentes = [
+    ...new Set(buckets.flatMap((b) => Object.keys(b.byTipo))),
+  ];
+
   return (
-    <main className="relative mx-auto max-w-3xl px-5 py-10 md:px-8">
+    <main className="mx-auto max-w-3xl px-5 py-10 md:px-8">
       <header className="mb-6 flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
             Inteligência de conteúdo
           </h1>
           <p className="mt-1 text-sm text-neutral-500">
-            Tudo que é postado nos canais de dica
+            Volume de posts por {bucket === "day" ? "dia" : "semana"} e categoria
+            {canalNome ? ` · ${canalNome}` : " · todos os canais"}
           </p>
         </div>
         <div className="text-right">
           <div className="text-5xl font-semibold leading-none tabular-nums">
-            {posts.length}
+            {totalPosts}
           </div>
           <div className="mt-1.5 text-[11px] font-medium uppercase tracking-wider text-neutral-500">
-            posts
+            posts no período
           </div>
         </div>
       </header>
 
-      <PostsFilter channels={channels} />
+      <ChartFilter channels={channels} />
 
-      {error && (
+      {error ? (
         <div className="rounded-xl border border-red-900/60 bg-red-950/40 p-4 text-sm text-red-300">
           Erro ao carregar: {error}
         </div>
-      )}
-
-      {!error && posts.length === 0 && (
+      ) : totalPosts === 0 ? (
         <div className="rounded-2xl border border-dashed border-neutral-800 bg-neutral-900/30 p-12 text-center">
-          <div className="text-3xl">📡</div>
-          <div className="mt-4 font-medium">Aguardando o primeiro post</div>
+          <div className="text-3xl">📊</div>
+          <div className="mt-4 font-medium">Sem dados no período</div>
           <p className="mx-auto mt-1 max-w-md text-sm text-neutral-500">
-            Assim que o bot estiver num canal e algo for postado, o conteúdo
-            aparece aqui automaticamente.
+            Quando os canais postarem (e os posts forem categorizados), o volume
+            aparece aqui.
           </p>
         </div>
+      ) : (
+        <div className="rounded-2xl border border-neutral-800/80 bg-neutral-900/40 p-5">
+          <StackedBars buckets={buckets} maxTotal={maxTotal} height={200} />
+          <div className="mt-4 border-t border-neutral-800 pt-4">
+            <CategoryLegend tipos={tiposPresentes} />
+          </div>
+        </div>
       )}
-
-      {!error &&
-        groups.map((g) => (
-          <section key={g.day} className="mb-6">
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-neutral-500">
-              {g.day}
-            </h2>
-            <ul className="space-y-2.5">
-              {g.items.map((p) => {
-                const aff = affiliateLabel(p.channelTitle, p.channelId);
-                const affColor = affiliateColors(p.channelId);
-                const media = p.mediaType
-                  ? MEDIA_LABEL[p.mediaType]
-                  : undefined;
-                return (
-                  <li
-                    key={p.id}
-                    className="rounded-xl border border-neutral-800/80 bg-neutral-900/50 p-4"
-                  >
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium ${affColor.chip}`}
-                        >
-                          {aff}
-                        </span>
-                        {media && (
-                          <span className="rounded-md bg-neutral-800 px-1.5 py-0.5 text-xs font-medium text-neutral-300">
-                            {media}
-                          </span>
-                        )}
-                      </div>
-                      <span className="shrink-0 text-xs text-neutral-500">
-                        {formatTimePt(p.postedAt)}
-                      </span>
-                    </div>
-                    <p className="whitespace-pre-wrap text-sm text-neutral-200">
-                      {p.text ?? (
-                        <span className="text-neutral-500">
-                          {media ? `[${media} sem legenda]` : "[sem texto]"}
-                        </span>
-                      )}
-                    </p>
-
-                    {p.tipo && (
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-                        <span className="rounded-md bg-neutral-800 px-1.5 py-0.5 font-medium text-neutral-200">
-                          {TIPO_LABEL[p.tipo] ?? p.tipo}
-                        </span>
-                        {p.casa && (
-                          <span className="rounded-md border border-neutral-700 px-1.5 py-0.5 text-neutral-400">
-                            {p.casa}
-                          </span>
-                        )}
-                        {p.gatilho && GATILHO_LABEL[p.gatilho] && (
-                          <span className="text-neutral-500">
-                            {GATILHO_LABEL[p.gatilho]}
-                          </span>
-                        )}
-                        {p.temLink && (
-                          <span className="text-neutral-500">· com link</span>
-                        )}
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        ))}
     </main>
   );
 }

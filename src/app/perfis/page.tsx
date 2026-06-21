@@ -1,6 +1,8 @@
 import { getAffiliateProfiles, type AffiliateProfile } from "@/lib/profiles";
+import { getTimelines, type Bucket } from "@/lib/analytics";
 import { affiliateColors, affiliateLabel } from "@/lib/affiliate";
 import { initials } from "@/lib/time";
+import { StackedBars } from "@/components/StackedBars";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +40,15 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ProfileCard({ p }: { p: AffiliateProfile }) {
+function ProfileCard({
+  p,
+  buckets,
+  maxBucket,
+}: {
+  p: AffiliateProfile;
+  buckets: Bucket[] | null;
+  maxBucket: number;
+}) {
   const aff = affiliateLabel(p.channelTitle, p.channelId);
   const color = affiliateColors(p.channelId);
 
@@ -52,9 +62,7 @@ function ProfileCard({ p }: { p: AffiliateProfile }) {
         </div>
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-lg font-semibold">{aff}</h2>
-          <p className="text-xs text-neutral-500">
-            {p.total} posts mapeados
-          </p>
+          <p className="text-xs text-neutral-500">{p.total} posts mapeados</p>
         </div>
       </header>
 
@@ -62,11 +70,36 @@ function ProfileCard({ p }: { p: AffiliateProfile }) {
         <Stat label="posts/dia" value={String(p.postsPerDay)} />
         <Stat
           label="pico"
-          value={p.peakHour !== null ? `${String(p.peakHour).padStart(2, "0")}h` : "—"}
+          value={
+            p.peakHour !== null
+              ? `${String(p.peakHour).padStart(2, "0")}h`
+              : "—"
+          }
         />
         <Stat label="com link" value={`${p.linkPct}%`} />
-        <Stat label="gatilho top" value={p.topGatilho ? (GATILHO_LABEL[p.topGatilho] ?? p.topGatilho) : "—"} />
+        <Stat
+          label="gatilho top"
+          value={
+            p.topGatilho
+              ? (GATILHO_LABEL[p.topGatilho] ?? p.topGatilho)
+              : "—"
+          }
+        />
       </div>
+
+      {buckets && (
+        <div className="mb-4">
+          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+            Volume (últimos 14 dias)
+          </div>
+          <StackedBars
+            buckets={buckets}
+            maxTotal={maxBucket}
+            height={48}
+            showLabels={false}
+          />
+        </div>
+      )}
 
       <div className="space-y-1.5">
         <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
@@ -102,12 +135,21 @@ function ProfileCard({ p }: { p: AffiliateProfile }) {
 
 export default async function PerfisPage() {
   let profiles: AffiliateProfile[] = [];
+  let timelines: Awaited<ReturnType<typeof getTimelines>> | null = null;
   let error: string | null = null;
   try {
-    profiles = await getAffiliateProfiles();
+    [profiles, timelines] = await Promise.all([
+      getAffiliateProfiles(),
+      getTimelines("day"),
+    ]);
   } catch (e) {
     error = e instanceof Error ? e.message : "erro desconhecido";
   }
+
+  const bucketsById = new Map(
+    (timelines?.channels ?? []).map((c) => [c.channelId, c.buckets]),
+  );
+  const maxBucket = timelines?.maxChannelBucket ?? 1;
 
   return (
     <main className="mx-auto max-w-3xl px-5 py-10 md:px-8">
@@ -116,7 +158,7 @@ export default async function PerfisPage() {
           Perfis dos afiliados
         </h1>
         <p className="mt-1 text-sm text-neutral-500">
-          A assinatura de conteúdo de cada canal, a partir dos posts categorizados
+          Volume no tempo e assinatura de conteúdo de cada canal, lado a lado
         </p>
       </header>
 
@@ -139,7 +181,12 @@ export default async function PerfisPage() {
       {!error && profiles.length > 0 && (
         <div className="space-y-4">
           {profiles.map((p) => (
-            <ProfileCard key={p.channelId} p={p} />
+            <ProfileCard
+              key={p.channelId}
+              p={p}
+              buckets={bucketsById.get(p.channelId) ?? null}
+              maxBucket={maxBucket}
+            />
           ))}
         </div>
       )}
