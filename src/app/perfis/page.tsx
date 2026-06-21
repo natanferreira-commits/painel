@@ -1,0 +1,148 @@
+import { getAffiliateProfiles, type AffiliateProfile } from "@/lib/profiles";
+import { affiliateColors, affiliateLabel } from "@/lib/affiliate";
+import { initials } from "@/lib/time";
+
+export const dynamic = "force-dynamic";
+
+export const metadata = {
+  title: "Perfis dos afiliados · Painel Arena",
+};
+
+const TIPO_LABEL: Record<string, string> = {
+  dica: "dica",
+  analise: "análise",
+  promo: "promo",
+  prova_social: "prova social",
+  motivacional: "motivacional",
+  cta_cadastro: "cadastro (CTA)",
+  educacional: "educacional",
+  interacao: "interação",
+  outro: "outro",
+};
+
+const GATILHO_LABEL: Record<string, string> = {
+  urgencia: "urgência",
+  autoridade: "autoridade",
+  escassez: "escassez",
+  proximidade: "proximidade",
+};
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 px-3 py-2">
+      <div className="text-sm font-medium tabular-nums text-neutral-100">
+        {value}
+      </div>
+      <div className="text-[11px] text-neutral-500">{label}</div>
+    </div>
+  );
+}
+
+function ProfileCard({ p }: { p: AffiliateProfile }) {
+  const aff = affiliateLabel(p.channelTitle, p.channelId);
+  const color = affiliateColors(p.channelId);
+
+  return (
+    <section className="rounded-2xl border border-neutral-800/80 bg-neutral-900/40 p-5">
+      <header className="mb-4 flex items-center gap-3">
+        <div
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-medium ${color.avatar}`}
+        >
+          {initials(aff)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-lg font-semibold">{aff}</h2>
+          <p className="text-xs text-neutral-500">
+            {p.total} posts mapeados
+          </p>
+        </div>
+      </header>
+
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Stat label="posts/dia" value={String(p.postsPerDay)} />
+        <Stat
+          label="pico"
+          value={p.peakHour !== null ? `${String(p.peakHour).padStart(2, "0")}h` : "—"}
+        />
+        <Stat label="com link" value={`${p.linkPct}%`} />
+        <Stat label="gatilho top" value={p.topGatilho ? (GATILHO_LABEL[p.topGatilho] ?? p.topGatilho) : "—"} />
+      </div>
+
+      <div className="space-y-1.5">
+        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+          Assinatura de conteúdo
+        </div>
+        {p.tipos.map((t) => (
+          <div key={t.tipo} className="flex items-center gap-3">
+            <div className="w-28 shrink-0 truncate text-xs text-neutral-400">
+              {TIPO_LABEL[t.tipo] ?? t.tipo}
+            </div>
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-800">
+              <div
+                className={`h-full rounded-full ${color.bar}`}
+                style={{ width: `${Math.max(3, t.pct)}%` }}
+              />
+            </div>
+            <div className="w-10 shrink-0 text-right text-xs tabular-nums text-neutral-400">
+              {t.pct}%
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {p.topCasa && (
+        <div className="mt-4 text-xs text-neutral-500">
+          Casa mais citada:{" "}
+          <span className="text-neutral-300">{p.topCasa}</span>
+        </div>
+      )}
+    </section>
+  );
+}
+
+export default async function PerfisPage() {
+  let profiles: AffiliateProfile[] = [];
+  let error: string | null = null;
+  try {
+    profiles = await getAffiliateProfiles();
+  } catch (e) {
+    error = e instanceof Error ? e.message : "erro desconhecido";
+  }
+
+  return (
+    <main className="mx-auto max-w-3xl px-5 py-10 md:px-8">
+      <header className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Perfis dos afiliados
+        </h1>
+        <p className="mt-1 text-sm text-neutral-500">
+          A assinatura de conteúdo de cada canal, a partir dos posts categorizados
+        </p>
+      </header>
+
+      {error && (
+        <div className="rounded-xl border border-red-900/60 bg-red-950/40 p-4 text-sm text-red-300">
+          Erro ao carregar: {error}
+        </div>
+      )}
+
+      {!error && profiles.length === 0 && (
+        <div className="rounded-2xl border border-dashed border-neutral-800 bg-neutral-900/30 p-12 text-center">
+          <div className="text-3xl">📊</div>
+          <div className="mt-4 font-medium">Sem perfis ainda</div>
+          <p className="mx-auto mt-1 max-w-md text-sm text-neutral-500">
+            Os perfis aparecem assim que houver posts categorizados nos canais.
+          </p>
+        </div>
+      )}
+
+      {!error && profiles.length > 0 && (
+        <div className="space-y-4">
+          {profiles.map((p) => (
+            <ProfileCard key={p.channelId} p={p} />
+          ))}
+        </div>
+      )}
+    </main>
+  );
+}
