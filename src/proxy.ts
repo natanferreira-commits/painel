@@ -1,24 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
+import { AUTH_COOKIE, sha256Hex } from "@/lib/auth";
 
-// Protege o painel com uma senha simples (HTTP Basic Auth).
+// Protege o painel com login por senha (cookie de sessao).
 // Se PANEL_PASSWORD nao estiver definido (ex: dev local), nao bloqueia.
-// O webhook /api/sendpulse fica de fora pra o SendPulse conseguir postar.
-// (No Next 16 esse arquivo se chama "proxy", antes era "middleware".)
-export function proxy(req: NextRequest) {
+// O webhook /api fica de fora pelo matcher abaixo.
+export async function proxy(req: NextRequest) {
   const password = process.env.PANEL_PASSWORD;
   if (!password) return NextResponse.next();
 
-  const auth = req.headers.get("authorization");
-  if (auth?.startsWith("Basic ")) {
-    const decoded = atob(auth.slice(6));
-    const pass = decoded.slice(decoded.indexOf(":") + 1);
-    if (pass === password) return NextResponse.next();
-  }
+  // A propria pagina de login fica liberada.
+  if (req.nextUrl.pathname === "/login") return NextResponse.next();
 
-  return new NextResponse("Autenticacao necessaria", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="Painel Arena"' },
-  });
+  const cookie = req.cookies.get(AUTH_COOKIE)?.value;
+  const expected = await sha256Hex(password);
+  if (cookie === expected) return NextResponse.next();
+
+  const url = req.nextUrl.clone();
+  url.pathname = "/login";
+  url.search = "";
+  url.searchParams.set("next", req.nextUrl.pathname);
+  return NextResponse.redirect(url);
 }
 
 export const config = {

@@ -100,12 +100,21 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="flex items-center gap-2 px-3 pt-4 text-xs text-neutral-600">
-        <span className="relative flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-        </span>
-        Ao vivo
+      <div className="space-y-2 pt-4">
+        <div className="flex items-center gap-2 px-3 text-xs text-neutral-600">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+          </span>
+          Ao vivo
+        </div>
+        <a
+          href="/api/logout"
+          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-500 transition-colors hover:bg-neutral-800/60 hover:text-neutral-300"
+        >
+          <Icon d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+          Sair
+        </a>
       </div>
     </aside>
   );
