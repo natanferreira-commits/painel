@@ -45,3 +45,20 @@ create table if not exists webhook_events (
   received_at timestamptz not null default now(),
   body jsonb not null
 );
+
+-- Modulo A: posts dos canais de dica do Telegram (conteudo publicado).
+create table if not exists posts (
+  id bigint generated always as identity primary key,
+  channel_id text not null,
+  channel_title text,
+  telegram_msg_id bigint,
+  text text,
+  media_type text,
+  posted_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  raw_payload jsonb not null,
+  unique (channel_id, telegram_msg_id)
+);
+
+create index if not exists idx_posts_channel on posts (channel_id, posted_at desc);
+create index if not exists idx_posts_posted on posts (posted_at desc);
