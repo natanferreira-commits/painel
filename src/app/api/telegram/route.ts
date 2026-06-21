@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { categorizePost } from "@/lib/categorize";
 
 export const runtime = "nodejs";
 
@@ -52,13 +53,34 @@ export async function POST(req: NextRequest) {
     raw_payload: update,
   };
 
+  const supabase = getSupabaseAdmin();
   try {
-    await getSupabaseAdmin()
+    await supabase
       .from("posts")
       .upsert(row, { onConflict: "channel_id,telegram_msg_id" });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "erro desconhecido";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+  }
+
+  // Categoriza na hora (best-effort). Se a IA falhar ou faltar a chave,
+  // o post fica gravado sem categoria e o backfill (/api/categorize) pega depois.
+  try {
+    const cat = await categorizePost(row.text, row.media_type);
+    await supabase
+      .from("posts")
+      .update({
+        cat_tipo: cat.tipo,
+        cat_casa: cat.casa || null,
+        cat_modalidade: cat.modalidade || null,
+        cat_gatilho: cat.gatilho,
+        cat_tem_link: cat.tem_link,
+        categorized_at: new Date().toISOString(),
+      })
+      .eq("channel_id", row.channel_id)
+      .eq("telegram_msg_id", row.telegram_msg_id);
+  } catch {
+    // ignora; backfill resolve depois
   }
 
   return NextResponse.json({ ok: true });

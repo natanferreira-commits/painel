@@ -26,6 +26,25 @@ const MEDIA_LABEL: Record<string, string> = {
   poll: "enquete",
 };
 
+const TIPO_LABEL: Record<string, string> = {
+  dica: "dica",
+  analise: "análise",
+  promo: "promo",
+  prova_social: "prova social",
+  motivacional: "motivacional",
+  cta_cadastro: "cadastro (CTA)",
+  educacional: "educacional",
+  interacao: "interação",
+  outro: "outro",
+};
+
+const GATILHO_LABEL: Record<string, string> = {
+  urgencia: "urgência",
+  autoridade: "autoridade",
+  escassez: "escassez",
+  proximidade: "proximidade",
+};
+
 export default async function ConteudoPage({
   searchParams,
 }: {
@@ -141,6 +160,27 @@ export default async function ConteudoPage({
                         </span>
                       )}
                     </p>
+
+                    {p.tipo && (
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+                        <span className="rounded-md bg-neutral-800 px-1.5 py-0.5 font-medium text-neutral-200">
+                          {TIPO_LABEL[p.tipo] ?? p.tipo}
+                        </span>
+                        {p.casa && (
+                          <span className="rounded-md border border-neutral-700 px-1.5 py-0.5 text-neutral-400">
+                            {p.casa}
+                          </span>
+                        )}
+                        {p.gatilho && GATILHO_LABEL[p.gatilho] && (
+                          <span className="text-neutral-500">
+                            {GATILHO_LABEL[p.gatilho]}
+                          </span>
+                        )}
+                        {p.temLink && (
+                          <span className="text-neutral-500">· com link</span>
+                        )}
+                      </div>
+                    )}
                   </li>
                 );
               })}

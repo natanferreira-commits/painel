@@ -62,3 +62,13 @@ create table if not exists posts (
 
 create index if not exists idx_posts_channel on posts (channel_id, posted_at desc);
 create index if not exists idx_posts_posted on posts (posted_at desc);
+
+-- Categorizacao do post (preenchida pela IA). categorized_at null = ainda nao categorizado.
+alter table posts add column if not exists cat_tipo text;
+alter table posts add column if not exists cat_casa text;
+alter table posts add column if not exists cat_modalidade text;
+alter table posts add column if not exists cat_gatilho text;
+alter table posts add column if not exists cat_tem_link boolean;
+alter table posts add column if not exists categorized_at timestamptz;
+
+create index if not exists idx_posts_uncategorized on posts (categorized_at) where categorized_at is null;
