@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getConversationDetail } from "@/lib/conversations";
 import { WaitTimer } from "@/components/WaitTimer";
 import { formatTimePt, initials } from "@/lib/time";
+import { affiliateColors, affiliateLabel } from "@/lib/affiliate";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,9 @@ export default async function ConversaPage({
   const { contactId } = await params;
   const convo = await getConversationDetail(contactId);
   if (!convo) notFound();
+
+  const aff = affiliateLabel(convo.botName, convo.botId);
+  const affColor = affiliateColors(convo.botId ?? convo.botName ?? aff);
 
   return (
     <main className="relative mx-auto flex min-h-screen max-w-3xl flex-col px-5 py-8 md:px-8">
@@ -34,7 +38,9 @@ export default async function ConversaPage({
       </Link>
 
       <header className="mb-6 flex items-center gap-4 border-b border-neutral-800 pb-5">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-base font-medium text-neutral-300">
+        <div
+          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-base font-medium ${affColor.avatar}`}
+        >
           {initials(convo.contactName)}
         </div>
         <div className="min-w-0 flex-1">
@@ -48,9 +54,13 @@ export default async function ConversaPage({
               </span>
             )}
           </div>
-          <p className="mt-0.5 text-sm text-neutral-500">
-            {convo.botName ?? convo.botId ?? "canal desconhecido"}
-          </p>
+          <div className="mt-1">
+            <span
+              className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium ${affColor.chip}`}
+            >
+              {aff}
+            </span>
+          </div>
         </div>
         <div className="shrink-0 text-right">
           {convo.waiting && convo.waitingSince ? (

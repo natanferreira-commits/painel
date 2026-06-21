@@ -3,6 +3,7 @@ import { type ConversationSummary } from "@/lib/conversations";
 import { slaLevel, slaBar } from "@/lib/sla";
 import { WaitTimer } from "@/components/WaitTimer";
 import { formatRelativePt, initials } from "@/lib/time";
+import { affiliateColors, affiliateLabel } from "@/lib/affiliate";
 
 export function ConversationList({
   items,
@@ -33,6 +34,8 @@ export function ConversationList({
             : null;
         const accent = level ? slaBar[level] : "bg-neutral-700";
         const isCritical = level === "red";
+        const aff = affiliateLabel(c.botName, c.botId);
+        const affColor = affiliateColors(c.botId ?? c.botName ?? aff);
         const preview =
           (c.lastDirection === "out" ? "Você: " : "") + (c.lastText ?? "");
 
@@ -51,7 +54,9 @@ export function ConversationList({
                 className={`absolute inset-y-0 left-0 w-1 ${accent}`}
               />
               <div className="flex items-center gap-4 py-4 pl-6 pr-4">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-sm font-medium text-neutral-300">
+                <div
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-medium ${affColor.avatar}`}
+                >
                   {initials(c.contactName)}
                 </div>
 
@@ -77,17 +82,21 @@ export function ConversationList({
                   <p className="mt-0.5 truncate text-sm text-neutral-400">
                     {preview || "(sem texto)"}
                   </p>
-                  <div className="mt-1.5 flex items-center gap-1.5 text-xs text-neutral-500">
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-3 w-3"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
+                  <div className="mt-1.5">
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium ${affColor.chip}`}
                     >
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                    </svg>
-                    {c.botName ?? c.botId ?? "canal desconhecido"}
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-3 w-3"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                      </svg>
+                      {aff}
+                    </span>
                   </div>
                 </div>
 
