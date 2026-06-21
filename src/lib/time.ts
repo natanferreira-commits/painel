@@ -11,11 +11,21 @@ export function formatRelativePt(iso: string, now: number = Date.now()): string 
   return `há ${d}d`;
 }
 
-// Hora curta (ex: "14:32") pra timestamps na thread.
+// Hora curta (ex: "14:32") no fuso de Brasilia.
 export function formatTimePt(iso: string): string {
   return new Date(iso).toLocaleTimeString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
     hour: "2-digit",
     minute: "2-digit",
+  });
+}
+
+// Dia por extenso curto (ex: "21 de junho") no fuso de Brasilia.
+export function formatDayPt(iso: string): string {
+  return new Date(iso).toLocaleDateString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "long",
   });
 }
 

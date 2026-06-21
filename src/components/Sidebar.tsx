@@ -44,7 +44,6 @@ const MODULO_A: Item[] = [
     href: "/conteudo",
     label: "Inteligência de conteúdo",
     icon: <Icon d="M3 3v18h18M7 14l4-4 3 3 5-6" />,
-    soon: true,
   },
 ];
 
