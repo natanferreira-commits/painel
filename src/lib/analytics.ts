@@ -1,42 +1,7 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
-// Ordem de empilhamento das categorias (de baixo pra cima).
-export const TIPOS_ORDER = [
-  "dica",
-  "analise",
-  "prova_social",
-  "promo",
-  "cta_cadastro",
-  "motivacional",
-  "educacional",
-  "interacao",
-  "outro",
-] as const;
-
-export const TIPO_LABEL: Record<string, string> = {
-  dica: "dica",
-  analise: "análise",
-  promo: "promo",
-  prova_social: "prova social",
-  motivacional: "motivacional",
-  cta_cadastro: "cadastro (CTA)",
-  educacional: "educacional",
-  interacao: "interação",
-  outro: "outro",
-};
-
-// Cor por categoria (classes literais pro Tailwind detectar).
-export const CATEGORY_COLOR: Record<string, string> = {
-  dica: "bg-emerald-500",
-  analise: "bg-sky-500",
-  prova_social: "bg-violet-500",
-  promo: "bg-amber-500",
-  cta_cadastro: "bg-orange-500",
-  motivacional: "bg-pink-500",
-  educacional: "bg-teal-500",
-  interacao: "bg-blue-500",
-  outro: "bg-neutral-500",
-};
+// Taxonomia (tipos, labels, cores, ordem) vem de um lugar so.
+export { TIPOS_ORDER, TIPO_LABEL, CATEGORY_COLOR } from "@/lib/taxonomy";
 
 export type Bucket = {
   key: string;

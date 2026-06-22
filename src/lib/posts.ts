@@ -23,10 +23,10 @@ type Row = {
   media_type: string | null;
   text: string | null;
   posted_at: string;
+  has_link: boolean | null;
   cat_tipo: string | null;
   cat_casa: string | null;
   cat_gatilho: string | null;
-  cat_tem_link: boolean | null;
 };
 
 export async function getPosts(filters: PostFilters = {}): Promise<PostItem[]> {
@@ -34,7 +34,7 @@ export async function getPosts(filters: PostFilters = {}): Promise<PostItem[]> {
   let query = supabase
     .from("posts")
     .select(
-      "id,channel_id,channel_title,media_type,text,posted_at,cat_tipo,cat_casa,cat_gatilho,cat_tem_link",
+      "id,channel_id,channel_title,media_type,text,posted_at,has_link,cat_tipo,cat_casa,cat_gatilho",
     )
     .order("posted_at", { ascending: false })
     .limit(300);
@@ -53,7 +53,7 @@ export async function getPosts(filters: PostFilters = {}): Promise<PostItem[]> {
     tipo: p.cat_tipo,
     casa: p.cat_casa,
     gatilho: p.cat_gatilho,
-    temLink: p.cat_tem_link,
+    temLink: p.has_link,
   }));
 
   const q = filters.q?.trim().toLowerCase();

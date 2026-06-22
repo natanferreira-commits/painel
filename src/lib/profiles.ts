@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { isVideo, isImage } from "@/lib/format";
 
 export type TipoShare = { tipo: string; count: number; pct: number };
 
@@ -8,6 +9,9 @@ export type AffiliateProfile = {
   total: number;
   tipos: TipoShare[]; // ordenado do maior pro menor
   linkPct: number;
+  videos: number; // contagens de formato (sem IA)
+  imagens: number;
+  links: number;
   topCasa: string | null;
   topGatilho: string | null; // exclui "nenhum"
   peakHour: number | null; // 0..23 (fuso BR)
@@ -19,10 +23,11 @@ type Row = {
   channel_id: string;
   channel_title: string | null;
   posted_at: string;
+  media_type: string | null;
+  has_link: boolean | null;
   cat_tipo: string | null;
   cat_casa: string | null;
   cat_gatilho: string | null;
-  cat_tem_link: boolean | null;
 };
 
 function spHour(iso: string): number {
@@ -59,7 +64,7 @@ export async function getAffiliateProfiles(): Promise<AffiliateProfile[]> {
   const { data, error } = await supabase
     .from("posts")
     .select(
-      "channel_id,channel_title,posted_at,cat_tipo,cat_casa,cat_gatilho,cat_tem_link",
+      "channel_id,channel_title,posted_at,media_type,has_link,cat_tipo,cat_casa,cat_gatilho",
     )
     .not("categorized_at", "is", null)
     .limit(5000);
@@ -82,6 +87,8 @@ export async function getAffiliateProfiles(): Promise<AffiliateProfile[]> {
     const hourCount = new Map<number, number>();
     const days = new Set<string>();
     let links = 0;
+    let videos = 0;
+    let imagens = 0;
     let lastPostAt = posts[0].posted_at;
 
     for (const p of posts) {
@@ -91,7 +98,9 @@ export async function getAffiliateProfiles(): Promise<AffiliateProfile[]> {
       if (p.cat_gatilho && p.cat_gatilho !== "nenhum") {
         gatCount.set(p.cat_gatilho, (gatCount.get(p.cat_gatilho) ?? 0) + 1);
       }
-      if (p.cat_tem_link) links++;
+      if (p.has_link) links++;
+      if (isVideo(p.media_type)) videos++;
+      if (isImage(p.media_type)) imagens++;
       const h = spHour(p.posted_at);
       hourCount.set(h, (hourCount.get(h) ?? 0) + 1);
       days.add(spDay(p.posted_at));
@@ -117,6 +126,9 @@ export async function getAffiliateProfiles(): Promise<AffiliateProfile[]> {
       total,
       tipos,
       linkPct: Math.round((links / total) * 100),
+      videos,
+      imagens,
+      links,
       topCasa: topKey(casaCount),
       topGatilho: topKey(gatCount),
       peakHour,

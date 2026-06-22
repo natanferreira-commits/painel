@@ -1,22 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { categorizePost } from "@/lib/categorize";
+import { mediaTypeOf, hasLinkOf, postFromUpdate } from "@/lib/format";
 
 export const runtime = "nodejs";
-
-// Detecta o tipo de midia do post. "video_note" e o video bolinha do Telegram.
-function mediaType(msg: Record<string, unknown>): string {
-  if (msg.video_note) return "video_note";
-  if (msg.photo) return "photo";
-  if (msg.video) return "video";
-  if (msg.animation) return "animation";
-  if (msg.voice) return "voice";
-  if (msg.audio) return "audio";
-  if (msg.document) return "document";
-  if (msg.poll) return "poll";
-  if (msg.text) return "text";
-  return "outro";
-}
 
 export async function POST(req: NextRequest) {
   let update: Record<string, unknown>;
@@ -30,9 +17,7 @@ export async function POST(req: NextRequest) {
   }
 
   // So nos interessam posts de canal (e edicoes deles).
-  const post = (update.channel_post ?? update.edited_channel_post) as
-    | Record<string, unknown>
-    | undefined;
+  const post = postFromUpdate(update);
   if (!post) {
     return NextResponse.json({ ok: true, skipped: true });
   }
@@ -43,12 +28,14 @@ export async function POST(req: NextRequest) {
     ? new Date(dateSec * 1000).toISOString()
     : new Date().toISOString();
 
+  // Formato e link: detectados aqui, sem IA (100% confiavel).
   const row = {
     channel_id: String(chat.id ?? ""),
     channel_title: (chat.title as string) ?? null,
     telegram_msg_id: (post.message_id as number) ?? null,
     text: (post.text as string) ?? (post.caption as string) ?? null,
-    media_type: mediaType(post),
+    media_type: mediaTypeOf(post),
+    has_link: hasLinkOf(post),
     posted_at,
     raw_payload: update,
   };
@@ -74,7 +61,6 @@ export async function POST(req: NextRequest) {
         cat_casa: cat.casa || null,
         cat_modalidade: cat.modalidade || null,
         cat_gatilho: cat.gatilho,
-        cat_tem_link: cat.tem_link,
         categorized_at: new Date().toISOString(),
       })
       .eq("channel_id", row.channel_id)

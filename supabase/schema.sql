@@ -63,12 +63,19 @@ create table if not exists posts (
 create index if not exists idx_posts_channel on posts (channel_id, posted_at desc);
 create index if not exists idx_posts_posted on posts (posted_at desc);
 
--- Categorizacao do post (preenchida pela IA). categorized_at null = ainda nao categorizado.
+-- Formato: detectado direto do Telegram, sem IA (preenchido na ingestao).
+-- media_type ja existe acima; has_link e o link determinístico.
+alter table posts add column if not exists has_link boolean;
+
+-- Categorizacao do post (sentido, preenchida pela IA). categorized_at null = ainda nao categorizado.
+-- A taxonomia de cat_tipo agora gira por objetivo: tip, analise, green, red,
+-- reembolso, cadastro, promo, enquete, interacao, motivacional, outro.
 alter table posts add column if not exists cat_tipo text;
 alter table posts add column if not exists cat_casa text;
 alter table posts add column if not exists cat_modalidade text;
 alter table posts add column if not exists cat_gatilho text;
-alter table posts add column if not exists cat_tem_link boolean;
 alter table posts add column if not exists categorized_at timestamptz;
+-- cat_tem_link foi aposentado (link virou determinístico em has_link). Mantido
+-- por compatibilidade; pode ser removido depois com: alter table posts drop column cat_tem_link;
 
 create index if not exists idx_posts_uncategorized on posts (categorized_at) where categorized_at is null;

@@ -2,31 +2,13 @@ import { getAffiliateProfiles, type AffiliateProfile } from "@/lib/profiles";
 import { getTimelines, type Bucket } from "@/lib/analytics";
 import { affiliateColors, affiliateLabel } from "@/lib/affiliate";
 import { initials } from "@/lib/time";
+import { TIPO_LABEL, GATILHO_LABEL } from "@/lib/taxonomy";
 import { StackedBars } from "@/components/StackedBars";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Perfis dos afiliados · Painel Arena",
-};
-
-const TIPO_LABEL: Record<string, string> = {
-  dica: "dica",
-  analise: "análise",
-  promo: "promo",
-  prova_social: "prova social",
-  motivacional: "motivacional",
-  cta_cadastro: "cadastro (CTA)",
-  educacional: "educacional",
-  interacao: "interação",
-  outro: "outro",
-};
-
-const GATILHO_LABEL: Record<string, string> = {
-  urgencia: "urgência",
-  autoridade: "autoridade",
-  escassez: "escassez",
-  proximidade: "proximidade",
 };
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -85,6 +67,19 @@ function ProfileCard({
               : "—"
           }
         />
+      </div>
+
+      {/* Formato: contagem direta do Telegram, sem IA. */}
+      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-400">
+        <span>
+          <span className="tabular-nums text-neutral-200">{p.videos}</span> vídeos
+        </span>
+        <span>
+          <span className="tabular-nums text-neutral-200">{p.imagens}</span> imagens
+        </span>
+        <span>
+          <span className="tabular-nums text-neutral-200">{p.links}</span> links
+        </span>
       </div>
 
       {buckets && (
