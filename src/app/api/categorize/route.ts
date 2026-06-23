@@ -22,15 +22,18 @@ function backfillLink(raw: Record<string, unknown> | null): boolean {
 }
 
 // Quantos posts por chamada (cada um e 1 chamada de IA).
-const BATCH = 25;
-// Quantas IAs em paralelo. Em sequencia, 25 estouravam o limite de 60s da
-// Vercel (timeout 504). Em paralelo, o lote inteiro fecha em poucos segundos.
-const CONCURRENCY = 10;
+const BATCH = 15;
+// Quantas IAs em paralelo. Concorrencia alta demais estourava o rate limit da
+// Anthropic (muitas falhas). Baixo demais voltava a estourar o timeout de 60s
+// da Vercel. 4 e o meio-termo.
+const CONCURRENCY = 4;
+
+type OneResult = { ok: boolean; error?: string };
 
 async function categorizeOne(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   post: Row,
-): Promise<boolean> {
+): Promise<OneResult> {
   try {
     const cat = await categorizePost(post.text, post.media_type);
     await supabase
@@ -45,9 +48,9 @@ async function categorizeOne(
         categorized_at: new Date().toISOString(),
       })
       .eq("id", post.id);
-    return true;
-  } catch {
-    return false;
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
 
@@ -68,13 +71,16 @@ async function run() {
 
   const rows = (data as Row[] | null) ?? [];
   let ok = 0;
+  let sampleError: string | null = null;
 
   // Processa em paralelo, com um teto de CONCURRENCY chamadas simultaneas.
   let cursor = 0;
   async function worker() {
     while (cursor < rows.length) {
       const post = rows[cursor++];
-      if (await categorizeOne(supabase, post)) ok++;
+      const r = await categorizeOne(supabase, post);
+      if (r.ok) ok++;
+      else if (!sampleError && r.error) sampleError = r.error;
     }
   }
   await Promise.all(
@@ -87,6 +93,7 @@ async function run() {
     processed: rows.length,
     categorized: ok,
     failed: rows.length - ok,
+    sample_error: sampleError,
     hint: remaining,
   });
 }
