@@ -17,7 +17,9 @@ let cached: Anthropic | null = null;
 function getClient(): Anthropic {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY nao configurada");
-  if (!cached) cached = new Anthropic({ apiKey: key });
+  // timeout curto por chamada + 1 retry: uma chamada travada falha rapido em
+  // vez de comer o orcamento de tempo do backfill (a rota tem deadline propria).
+  if (!cached) cached = new Anthropic({ apiKey: key, timeout: 15000, maxRetries: 1 });
   return cached;
 }
 
