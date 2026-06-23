@@ -21,6 +21,36 @@ function backfillLink(raw: Record<string, unknown> | null): boolean {
   return post ? hasLinkOf(post) : false;
 }
 
+// Quantos posts por chamada (cada um e 1 chamada de IA).
+const BATCH = 25;
+// Quantas IAs em paralelo. Em sequencia, 25 estouravam o limite de 60s da
+// Vercel (timeout 504). Em paralelo, o lote inteiro fecha em poucos segundos.
+const CONCURRENCY = 10;
+
+async function categorizeOne(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  post: Row,
+): Promise<boolean> {
+  try {
+    const cat = await categorizePost(post.text, post.media_type);
+    await supabase
+      .from("posts")
+      .update({
+        cat_tipo: cat.tipo,
+        cat_casa: cat.casa || null,
+        cat_modalidade: cat.modalidade || null,
+        cat_gatilho: cat.gatilho,
+        // Preenche o link determinístico se ainda estiver vazio (posts antigos).
+        has_link: post.has_link ?? backfillLink(post.raw_payload),
+        categorized_at: new Date().toISOString(),
+      })
+      .eq("id", post.id);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Categoriza posts ainda sem categoria. Pode ser chamado manualmente ou por cron.
 // Idempotente: so pega quem tem categorized_at null, entao rodar de novo nao recategoriza.
 async function run() {
@@ -30,7 +60,7 @@ async function run() {
     .select("id,text,media_type,has_link,raw_payload")
     .is("categorized_at", null)
     .order("id", { ascending: true })
-    .limit(25);
+    .limit(BATCH);
 
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
@@ -38,30 +68,27 @@ async function run() {
 
   const rows = (data as Row[] | null) ?? [];
   let ok = 0;
-  let failed = 0;
 
-  for (const post of rows) {
-    try {
-      const cat = await categorizePost(post.text, post.media_type);
-      await supabase
-        .from("posts")
-        .update({
-          cat_tipo: cat.tipo,
-          cat_casa: cat.casa || null,
-          cat_modalidade: cat.modalidade || null,
-          cat_gatilho: cat.gatilho,
-          // Preenche o link determinístico se ainda estiver vazio (posts antigos).
-          has_link: post.has_link ?? backfillLink(post.raw_payload),
-          categorized_at: new Date().toISOString(),
-        })
-        .eq("id", post.id);
-      ok++;
-    } catch {
-      failed++;
+  // Processa em paralelo, com um teto de CONCURRENCY chamadas simultaneas.
+  let cursor = 0;
+  async function worker() {
+    while (cursor < rows.length) {
+      const post = rows[cursor++];
+      if (await categorizeOne(supabase, post)) ok++;
     }
   }
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, rows.length) }, worker),
+  );
 
-  return NextResponse.json({ ok: true, processed: rows.length, categorized: ok, failed });
+  const remaining = rows.length === BATCH ? "talvez ainda haja mais (rode de novo)" : "fim";
+  return NextResponse.json({
+    ok: true,
+    processed: rows.length,
+    categorized: ok,
+    failed: rows.length - ok,
+    hint: remaining,
+  });
 }
 
 export async function GET() {
