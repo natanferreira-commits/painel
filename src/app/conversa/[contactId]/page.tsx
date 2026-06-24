@@ -4,6 +4,7 @@ import { getConversationDetail } from "@/lib/conversations";
 import { WaitTimer } from "@/components/WaitTimer";
 import { formatTimePt, initials } from "@/lib/time";
 import { affiliateColors, affiliateLabel } from "@/lib/affiliate";
+import { DismissButton } from "@/components/DismissButton";
 
 export const dynamic = "force-dynamic";
 
@@ -21,21 +22,24 @@ export default async function ConversaPage({
 
   return (
     <main className="relative mx-auto flex min-h-screen max-w-3xl flex-col px-5 py-8 md:px-8">
-      <Link
-        href="/"
-        className="mb-5 inline-flex items-center gap-1.5 text-sm text-neutral-400 transition-colors hover:text-neutral-200"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          className="h-4 w-4"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-sm text-neutral-400 transition-colors hover:text-neutral-200"
         >
-          <path d="m15 18-6-6 6-6" />
-        </svg>
-        Voltar para a fila
-      </Link>
+          <svg
+            viewBox="0 0 24 24"
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="m15 18-6-6 6-6" />
+          </svg>
+          Voltar para a fila
+        </Link>
+        <DismissButton contactId={convo.contactId} />
+      </div>
 
       <header className="mb-6 flex items-center gap-4 border-b border-neutral-800 pb-5">
         <div

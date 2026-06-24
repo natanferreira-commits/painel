@@ -1,5 +1,5 @@
 import { getConversations, getFilterOptions } from "@/lib/conversations";
-import { ConversationList } from "@/components/ConversationList";
+import { SelectableConversationList } from "@/components/SelectableConversationList";
 import { FilterBar } from "@/components/FilterBar";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { slaLevel, slaDot, type SlaLevel } from "@/lib/sla";
@@ -126,8 +126,9 @@ export default async function FilaPage({
             Erro ao carregar a fila: {error}
           </div>
         ) : (
-          <ConversationList
+          <SelectableConversationList
             items={conversations}
+            now={now}
             emptyLabel="Nenhuma conversa esperando resposta agora."
           />
         )}

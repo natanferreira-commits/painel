@@ -79,3 +79,9 @@ alter table posts add column if not exists categorized_at timestamptz;
 -- por compatibilidade; pode ser removido depois com: alter table posts drop column cat_tem_link;
 
 create index if not exists idx_posts_uncategorized on posts (categorized_at) where categorized_at is null;
+
+-- Modulo B: conversas que o time ocultou da fila.
+create table if not exists dismissed_conversations (
+  contact_id text primary key,
+  created_at timestamptz not null default now()
+);

@@ -126,10 +126,27 @@ function summarize(contactId: string, msgs: Row[]): ConversationSummary {
   };
 }
 
+// Contatos que o time ocultou da fila. Se a tabela ainda nao existe
+// (migration nao rodada), devolve vazio pra nao quebrar o painel.
+async function getDismissedSet(): Promise<Set<string>> {
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase
+      .from("dismissed_conversations")
+      .select("contact_id");
+    if (error) return new Set();
+    return new Set(
+      (data ?? []).map((r) => (r as { contact_id: string }).contact_id),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
 export async function getConversations(
   filters: Filters = {},
 ): Promise<ConversationSummary[]> {
-  const rows = await fetchRows();
+  const [rows, dismissed] = await Promise.all([fetchRows(), getDismissedSet()]);
   const grouped = groupByContact(rows);
 
   let list: ConversationSummary[] = [];
@@ -141,6 +158,7 @@ export async function getConversations(
   const q = filters.q?.trim().toLowerCase();
 
   list = list.filter((c) => {
+    if (dismissed.has(c.contactId)) return false;
     if (filters.onlyWaiting && !c.waiting) return false;
     if (filters.botId && c.botId !== filters.botId) return false;
     if (filters.tag && !c.allTags.includes(filters.tag)) return false;
