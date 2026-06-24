@@ -13,7 +13,7 @@ export type PostItem = {
   temLink: boolean | null;
 };
 
-export type PostFilters = { channelId?: string; q?: string };
+export type PostFilters = { channelId?: string; q?: string; tipo?: string };
 export type PostChannel = { id: string; title: string };
 
 type Row = {
@@ -39,6 +39,7 @@ export async function getPosts(filters: PostFilters = {}): Promise<PostItem[]> {
     .order("posted_at", { ascending: false })
     .limit(300);
   if (filters.channelId) query = query.eq("channel_id", filters.channelId);
+  if (filters.tipo) query = query.eq("cat_tipo", filters.tipo);
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);

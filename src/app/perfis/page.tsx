@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getAffiliateProfiles, type AffiliateProfile } from "@/lib/profiles";
 import { getTimelines, type Bucket } from "@/lib/analytics";
 import { affiliateColors, affiliateLabel } from "@/lib/affiliate";
@@ -36,17 +37,33 @@ function ProfileCard({
 
   return (
     <section className="rounded-2xl border border-neutral-800/80 bg-neutral-900/40 p-5">
-      <header className="mb-4 flex items-center gap-3">
+      <Link
+        href={`/canal/${encodeURIComponent(p.channelId)}`}
+        className="group mb-4 flex items-center gap-3"
+      >
         <div
           className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-medium ${color.avatar}`}
         >
           {initials(aff)}
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-lg font-semibold">{aff}</h2>
-          <p className="text-xs text-neutral-500">{p.total} posts mapeados</p>
+          <h2 className="truncate text-lg font-semibold transition-colors group-hover:text-violet-200">
+            {aff}
+          </h2>
+          <p className="text-xs text-neutral-500">
+            {p.total} posts mapeados · ver postagens
+          </p>
         </div>
-      </header>
+        <svg
+          viewBox="0 0 24 24"
+          className="h-4 w-4 shrink-0 text-neutral-600 transition-colors group-hover:text-neutral-300"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <path d="m9 18 6-6-6-6" />
+        </svg>
+      </Link>
 
       <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Stat label="posts/dia" value={String(p.postsPerDay)} />
@@ -101,8 +118,12 @@ function ProfileCard({
           Assinatura de conteúdo
         </div>
         {p.tipos.map((t) => (
-          <div key={t.tipo} className="flex items-center gap-3">
-            <div className="w-28 shrink-0 truncate text-xs text-neutral-400">
+          <Link
+            key={t.tipo}
+            href={`/canal/${encodeURIComponent(p.channelId)}?tipo=${t.tipo}`}
+            className="group flex items-center gap-3"
+          >
+            <div className="w-28 shrink-0 truncate text-xs text-neutral-400 transition-colors group-hover:text-neutral-100">
               {TIPO_LABEL[t.tipo] ?? t.tipo}
             </div>
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-800">
@@ -114,7 +135,7 @@ function ProfileCard({
             <div className="w-10 shrink-0 text-right text-xs tabular-nums text-neutral-400">
               {t.pct}%
             </div>
-          </div>
+          </Link>
         ))}
       </div>
 
