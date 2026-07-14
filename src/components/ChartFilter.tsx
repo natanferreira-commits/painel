@@ -3,28 +3,53 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type PostChannel } from "@/lib/posts";
 
-const selectClass =
-  "rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 outline-none focus:border-neutral-600";
+type AffiliateOpt = { id: number; nome: string };
 
-export function ChartFilter({ channels }: { channels: PostChannel[] }) {
+const selectClass =
+  "rounded-lg border border-line bg-panel2 px-3 py-2 text-sm text-ink outline-none focus:border-lime/60";
+
+export function ChartFilter({
+  channels,
+  affiliates = [],
+}: {
+  channels: PostChannel[];
+  affiliates?: AffiliateOpt[];
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
 
   const periodo = params.get("periodo") === "semana" ? "semana" : "dia";
 
-  function setParam(key: string, value: string) {
+  function setParams(updates: Record<string, string>) {
     const next = new URLSearchParams(params.toString());
-    if (value) next.set(key, value);
-    else next.delete(key);
+    for (const [key, value] of Object.entries(updates)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
     router.push(`${pathname}?${next.toString()}`, { scroll: false });
   }
 
   return (
     <div className="mb-5 flex flex-wrap items-center gap-2">
+      {affiliates.length > 0 && (
+        <select
+          value={params.get("afiliado") ?? ""}
+          onChange={(e) => setParams({ afiliado: e.target.value, canal: "" })}
+          className={selectClass}
+        >
+          <option value="">Todos os afiliados</option>
+          {affiliates.map((a) => (
+            <option key={a.id} value={String(a.id)}>
+              {a.nome}
+            </option>
+          ))}
+        </select>
+      )}
+
       <select
         value={params.get("canal") ?? ""}
-        onChange={(e) => setParam("canal", e.target.value)}
+        onChange={(e) => setParams({ canal: e.target.value, afiliado: "" })}
         className={selectClass}
       >
         <option value="">Todos os canais</option>
@@ -35,15 +60,15 @@ export function ChartFilter({ channels }: { channels: PostChannel[] }) {
         ))}
       </select>
 
-      <div className="inline-flex overflow-hidden rounded-lg border border-neutral-800">
+      <div className="inline-flex overflow-hidden rounded-lg border border-line">
         {(["dia", "semana"] as const).map((opt) => (
           <button
             key={opt}
-            onClick={() => setParam("periodo", opt === "dia" ? "" : opt)}
+            onClick={() => setParams({ periodo: opt === "dia" ? "" : opt })}
             className={`px-3 py-2 text-sm transition-colors ${
               periodo === opt
-                ? "bg-violet-500/15 text-violet-200"
-                : "text-neutral-400 hover:text-neutral-200"
+                ? "bg-lime/10 text-lime"
+                : "text-muted hover:text-ink"
             }`}
           >
             {opt === "dia" ? "Por dia" : "Por semana"}

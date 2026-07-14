@@ -1,18 +1,40 @@
 import { getPostChannels } from "@/lib/posts";
-import { getTimelines, type Bucket } from "@/lib/analytics";
+import { getAffiliateOptions, type AffiliateOption } from "@/lib/affiliates";
+import { getTimelines, type Bucket, type Timelines } from "@/lib/analytics";
 import { ChartFilter } from "@/components/ChartFilter";
 import { StackedBars, CategoryLegend } from "@/components/StackedBars";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Inteligência de conteúdo · Painel Arena",
+  title: "Conteúdo · ToolBox Arena",
 };
 
 type SP = Promise<{ [k: string]: string | string[] | undefined }>;
 
 function str(v: string | string[] | undefined): string | undefined {
   return typeof v === "string" && v ? v : undefined;
+}
+
+// Soma as timelines de um conjunto de canais (afiliado -> seus canais).
+function sumChannels(timelines: Timelines, channelIds: string[]): Bucket[] {
+  const set = new Set(channelIds);
+  const buckets: Bucket[] = timelines.keys.map((k) => ({
+    key: k.key,
+    label: k.label,
+    total: 0,
+    byTipo: {},
+  }));
+  for (const ch of timelines.channels) {
+    if (!set.has(ch.channelId)) continue;
+    ch.buckets.forEach((b, i) => {
+      buckets[i].total += b.total;
+      for (const [t, n] of Object.entries(b.byTipo)) {
+        buckets[i].byTipo[t] = (buckets[i].byTipo[t] ?? 0) + n;
+      }
+    });
+  }
+  return buckets;
 }
 
 export default async function ConteudoPage({
@@ -23,44 +45,51 @@ export default async function ConteudoPage({
   const sp = await searchParams;
   const bucket = sp.periodo === "semana" ? "week" : "day";
   const canal = str(sp.canal);
+  const afiliadoId = str(sp.afiliado);
 
-  let timelines: Awaited<ReturnType<typeof getTimelines>> | null = null;
+  let timelines: Timelines | null = null;
   let channels: Awaited<ReturnType<typeof getPostChannels>> = [];
+  let affiliates: AffiliateOption[] = [];
   let error: string | null = null;
 
   try {
-    [timelines, channels] = await Promise.all([
+    [timelines, channels, affiliates] = await Promise.all([
       getTimelines(bucket),
       getPostChannels(),
+      getAffiliateOptions().catch(() => [] as AffiliateOption[]),
     ]);
   } catch (e) {
     error = e instanceof Error ? e.message : "erro desconhecido";
   }
 
+  const selectedAff = afiliadoId
+    ? affiliates.find((a) => String(a.id) === afiliadoId) ?? null
+    : null;
+
   let buckets: Bucket[] = [];
   let maxTotal = 1;
   let totalPosts = 0;
-  let canalNome: string | null = null;
+  let escopo = "todos os canais";
+  let semCanalVinculado = false;
 
   if (timelines) {
-    if (canal) {
+    if (selectedAff) {
+      escopo = selectedAff.nome;
+      if (selectedAff.channelIds.length === 0) {
+        semCanalVinculado = true;
+        buckets = sumChannels(timelines, []);
+      } else {
+        buckets = sumChannels(timelines, selectedAff.channelIds);
+      }
+    } else if (canal) {
       const ch = timelines.channels.find((c) => c.channelId === canal);
-      buckets =
-        ch?.buckets ??
-        timelines.keys.map((k) => ({
-          key: k.key,
-          label: k.label,
-          total: 0,
-          byTipo: {},
-        }));
-      maxTotal = Math.max(1, ...buckets.map((b) => b.total));
-      totalPosts = ch?.total ?? 0;
-      canalNome = ch?.channelTitle ?? canal;
+      buckets = ch?.buckets ?? sumChannels(timelines, []);
+      escopo = ch?.channelTitle ?? canal;
     } else {
       buckets = timelines.aggregate;
-      maxTotal = timelines.maxAggregateBucket;
-      totalPosts = buckets.reduce((s, b) => s + b.total, 0);
     }
+    maxTotal = Math.max(1, ...buckets.map((b) => b.total));
+    totalPosts = buckets.reduce((s, b) => s + b.total, 0);
   }
 
   const tiposPresentes = [
@@ -71,43 +100,52 @@ export default async function ConteudoPage({
     <main className="mx-auto max-w-3xl px-5 py-10 md:px-8">
       <header className="mb-6 flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Inteligência de conteúdo
-          </h1>
-          <p className="mt-1 text-sm text-neutral-500">
+          <h1 className="text-2xl font-semibold tracking-tight">Conteúdo</h1>
+          <p className="mt-1 text-sm text-muted">
             Volume de posts por {bucket === "day" ? "dia" : "semana"} e categoria
-            {canalNome ? ` · ${canalNome}` : " · todos os canais"}
+            {" · "}
+            {escopo}
           </p>
         </div>
         <div className="text-right">
           <div className="text-5xl font-semibold leading-none tabular-nums">
             {totalPosts}
           </div>
-          <div className="mt-1.5 text-[11px] font-medium uppercase tracking-wider text-neutral-500">
+          <div className="mt-1.5 text-[11px] font-medium uppercase tracking-wider text-muted">
             posts no período
           </div>
         </div>
       </header>
 
-      <ChartFilter channels={channels} />
+      <ChartFilter channels={channels} affiliates={affiliates} />
 
       {error ? (
-        <div className="rounded-xl border border-red-900/60 bg-red-950/40 p-4 text-sm text-red-300">
+        <div className="rounded-xl border border-crit/40 bg-crit/10 p-4 text-sm text-crit">
           Erro ao carregar: {error}
         </div>
+      ) : semCanalVinculado ? (
+        <div className="rounded-2xl border border-dashed border-line bg-panel/40 p-12 text-center">
+          <div className="text-3xl">🔗</div>
+          <div className="mt-4 font-medium">
+            {escopo} não tem canal vinculado
+          </div>
+          <p className="mx-auto mt-1 max-w-md text-sm text-muted">
+            Vincule o canal do Telegram desse afiliado em <b>Afiliados</b> pra ver o conteúdo dele
+            aqui.
+          </p>
+        </div>
       ) : totalPosts === 0 ? (
-        <div className="rounded-2xl border border-dashed border-neutral-800 bg-neutral-900/30 p-12 text-center">
+        <div className="rounded-2xl border border-dashed border-line bg-panel/40 p-12 text-center">
           <div className="text-3xl">📊</div>
           <div className="mt-4 font-medium">Sem dados no período</div>
-          <p className="mx-auto mt-1 max-w-md text-sm text-neutral-500">
-            Quando os canais postarem (e os posts forem categorizados), o volume
-            aparece aqui.
+          <p className="mx-auto mt-1 max-w-md text-sm text-muted">
+            Quando os canais postarem (e os posts forem categorizados), o volume aparece aqui.
           </p>
         </div>
       ) : (
-        <div className="rounded-2xl border border-neutral-800/80 bg-neutral-900/40 p-5">
+        <div className="rounded-2xl border border-line bg-panel p-5">
           <StackedBars buckets={buckets} maxTotal={maxTotal} height={200} />
-          <div className="mt-4 border-t border-neutral-800 pt-4">
+          <div className="mt-4 border-t border-linesoft pt-4">
             <CategoryLegend tipos={tiposPresentes} />
           </div>
         </div>

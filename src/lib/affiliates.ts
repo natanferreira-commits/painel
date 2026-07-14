@@ -11,6 +11,14 @@ export type Affiliate = {
   ativo: boolean;
 };
 
+// Opção de afiliado pra filtros: o afiliado e os ids de canal que ele agrega.
+// É o primitivo transversal — afiliado -> canais -> dados desses canais.
+export type AffiliateOption = {
+  id: number;
+  nome: string;
+  channelIds: string[];
+};
+
 type AffRow = {
   id: number;
   nome: string;
@@ -59,4 +67,16 @@ export async function getAffiliates(): Promise<Affiliate[]> {
     sendpulseBotId: r.id_bot_sendpulse,
     ativo: r.ativo ?? true,
   }));
+}
+
+// Afiliados ativos + seus canais, pra popular filtros. Reaproveita getAffiliates.
+export async function getAffiliateOptions(): Promise<AffiliateOption[]> {
+  const affs = await getAffiliates();
+  return affs
+    .filter((a) => a.ativo)
+    .map((a) => ({
+      id: a.id,
+      nome: a.nome,
+      channelIds: a.channels.map((c) => c.id),
+    }));
 }
