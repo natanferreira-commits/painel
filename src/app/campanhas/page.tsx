@@ -1,6 +1,7 @@
 import { getSendpulseFlows, type SpFlow } from "@/lib/sendpulse";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export const metadata = {
   title: "Campanhas · ToolBox Arena",
@@ -116,7 +117,20 @@ export default async function CampanhasPage() {
                             title={f.status === 1 ? "ativo" : "inativo"}
                           />
                           <span className="min-w-0 flex-1 truncate text-[13.5px]">{f.name}</span>
-                          <span className="shrink-0 text-[11.5px] tabular-nums text-faint">
+                          <span
+                            className="flex shrink-0 items-center gap-1 text-[13px] tabular-nums"
+                            title={f.entryTag ? `tag de entrada: ${f.entryTag}` : "sem tag de entrada detectada"}
+                          >
+                            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-faint" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8" />
+                            </svg>
+                            {f.entered !== null ? (
+                              <b className="font-semibold text-ink">{f.entered.toLocaleString("pt-BR")}</b>
+                            ) : (
+                              <span className="text-faint">—</span>
+                            )}
+                          </span>
+                          <span className="w-14 shrink-0 text-right text-[11.5px] tabular-nums text-faint">
                             {f.createdAt.slice(0, 10).split("-").reverse().join("/")}
                           </span>
                         </li>
@@ -131,8 +145,9 @@ export default async function CampanhasPage() {
       )}
 
       <p className="mt-6 text-[12px] text-faint">
-        Por enquanto puxa só a conta do Vitor ZZ (a chave configurada). O número de pessoas por
-        fluxo e os nomes das pastas entram no próximo passo.
+        O número (👤) é quantas pessoas iniciaram o fluxo — vem da tag que ele cola na entrada.
+        &ldquo;—&rdquo; = fluxo sem tag de entrada detectada. Por enquanto puxa só a conta do
+        Vitor ZZ; nomes das pastas e as outras contas vêm depois.
       </p>
     </main>
   );
