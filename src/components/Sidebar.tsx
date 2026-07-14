@@ -41,7 +41,6 @@ const FERRAMENTAS: Item[] = [
     href: "/campanhas",
     label: "Campanhas",
     icon: <Icon d="M21 6H3M18 12H6M14 18h-4" />,
-    soon: true,
   },
   {
     href: "/suporte",

@@ -50,3 +50,53 @@ export async function spGet(
   }
   return { status: res.status, body };
 }
+
+// ---- Fluxos (campanhas) de chatbot ----
+export type SpFlow = {
+  id: string;
+  name: string;
+  status: number;
+  folderId: string | null;
+  createdAt: string;
+  botId: string;
+  botName: string;
+};
+
+type BotRow = {
+  id: string;
+  name?: string;
+  channel?: string;
+  channel_data?: { name?: string; username?: string };
+};
+type FlowRow = {
+  id: string;
+  name: string;
+  status: number;
+  folder_id: string | null;
+  created_at: string;
+};
+
+// Puxa os fluxos de todos os bots de Telegram da conta (credenciais em env).
+export async function getSendpulseFlows(): Promise<SpFlow[]> {
+  const botsRes = await spGet("/telegram/bots");
+  const bots = (botsRes.body as { data?: BotRow[] } | null)?.data ?? [];
+
+  const out: SpFlow[] = [];
+  for (const b of bots) {
+    const botName = b.channel_data?.name ?? b.name ?? b.id;
+    const fr = await spGet(`/telegram/flows?bot_id=${b.id}`);
+    const flows = (fr.body as { data?: FlowRow[] } | null)?.data ?? [];
+    for (const f of flows) {
+      out.push({
+        id: f.id,
+        name: f.name,
+        status: f.status,
+        folderId: f.folder_id,
+        createdAt: f.created_at,
+        botId: b.id,
+        botName,
+      });
+    }
+  }
+  return out;
+}
