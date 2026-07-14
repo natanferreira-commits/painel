@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Painel Arena",
-  description: "Central de reembolso e inteligência de conteúdo do Arena",
+  title: "ToolBox Arena",
+  description: "A caixa de ferramentas interna do Arena — conteúdo, campanhas e suporte dos afiliados.",
 };
 
 export default function RootLayout({
@@ -28,7 +28,7 @@ export default function RootLayout({
       lang="pt-BR"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full bg-neutral-950 text-neutral-100">
+      <body className="min-h-full bg-ground text-ink">
         <div className="flex min-h-screen">
           <Sidebar />
           <div className="min-w-0 flex-1">{children}</div>

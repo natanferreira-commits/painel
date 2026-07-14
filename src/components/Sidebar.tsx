@@ -14,10 +14,10 @@ function Icon({ d }: { d: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
-      className="h-[18px] w-[18px]"
+      className="h-[17px] w-[17px]"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2"
+      strokeWidth="1.9"
       strokeLinecap="round"
       strokeLinejoin="round"
     >
@@ -26,51 +26,82 @@ function Icon({ d }: { d: string }) {
   );
 }
 
-const MODULO_B: Item[] = [
+const FERRAMENTAS: Item[] = [
   {
     href: "/",
-    label: "Fila de reembolso",
-    icon: <Icon d="M3 5h18M3 12h18M3 19h12" />,
+    label: "Visão geral",
+    icon: <Icon d="M3 3v18h18M7 14l3-4 3 3 4-6" />,
   },
   {
-    href: "/conversas",
-    label: "Todas as conversas",
-    icon: <Icon d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />,
+    href: "/conteudo",
+    label: "Conteúdo",
+    icon: <Icon d="M4 4h16v4H4zM4 12h10v8H4zM17 12h3v8h-3z" />,
+  },
+  {
+    href: "/campanhas",
+    label: "Campanhas",
+    icon: <Icon d="M21 6H3M18 12H6M14 18h-4" />,
+    soon: true,
+  },
+  {
+    href: "/suporte",
+    label: "Suporte",
+    icon: (
+      <Icon d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    ),
   },
 ];
 
-const MODULO_A: Item[] = [
-  {
-    href: "/conteudo",
-    label: "Inteligência de conteúdo",
-    icon: <Icon d="M3 3v18h18M7 14l4-4 3 3 5-6" />,
-  },
+const GESTAO: Item[] = [
   {
     href: "/perfis",
-    label: "Perfis dos afiliados",
-    icon: <Icon d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />,
+    label: "Afiliados",
+    icon: (
+      <Icon d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+    ),
+  },
+  {
+    href: "/status",
+    label: "Status de ingestão",
+    icon: <Icon d="M12 3v3M12 18v3M5 12H2M22 12h-3M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" />,
+    soon: true,
   },
 ];
 
 function NavLink({ item, active }: { item: Item; active: boolean }) {
-  return (
-    <Link
-      href={item.href}
-      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-        active
-          ? "bg-violet-500/15 text-violet-200"
-          : "text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200"
-      }`}
-    >
-      <span className={active ? "text-violet-300" : "text-neutral-500"}>
-        {item.icon}
-      </span>
+  const inner = (
+    <>
+      <span className={active ? "text-lime" : "text-faint"}>{item.icon}</span>
       <span className="flex-1 truncate">{item.label}</span>
       {item.soon && (
-        <span className="rounded-full bg-neutral-800 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500">
+        <span className="rounded-full border border-line px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-faint">
           em breve
         </span>
       )}
+    </>
+  );
+
+  const base =
+    "relative flex items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] font-medium transition-colors";
+
+  if (item.soon) {
+    return (
+      <div className={`${base} cursor-default text-faint`} aria-disabled>
+        {inner}
+      </div>
+    );
+  }
+
+  return (
+    <Link
+      href={item.href}
+      className={`${base} ${
+        active
+          ? "bg-lime/10 text-ink before:absolute before:-left-3 before:top-2 before:bottom-2 before:w-[3px] before:rounded-r before:bg-lime before:content-['']"
+          : "text-muted hover:bg-raise hover:text-ink"
+      }`}
+    >
+      {inner}
     </Link>
   );
 }
@@ -81,43 +112,57 @@ export function Sidebar() {
     href === "/" ? pathname === "/" : pathname.startsWith(href);
 
   return (
-    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-neutral-800/80 bg-neutral-950/80 px-3 py-5 md:flex">
-      <div className="flex items-center gap-2 px-2 pb-6">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-600 text-sm font-bold text-white">
-          A
+    <aside className="sticky top-0 hidden h-screen w-[236px] shrink-0 flex-col border-r border-line bg-[#0c110e] px-3.5 py-[18px] md:flex">
+      <div className="flex items-center gap-2.5 px-2 pb-5">
+        <div className="grid h-7 w-7 place-items-center rounded-lg bg-lime">
+          <svg
+            viewBox="0 0 24 24"
+            className="h-4 w-4"
+            fill="none"
+            stroke="#06120c"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M3 7h18M3 7l1.5 12a2 2 0 0 0 2 1.7h11a2 2 0 0 0 2-1.7L21 7M9 7V5a3 3 0 0 1 6 0v2" />
+          </svg>
         </div>
-        <span className="font-semibold tracking-tight">Painel Arena</span>
+        <span className="text-[15px] font-bold tracking-tight">
+          ToolBox <span className="text-lime">Arena</span>
+        </span>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-1">
-        <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-neutral-600">
-          Reembolso e suporte
+      <nav className="flex flex-1 flex-col gap-0.5">
+        <p className="px-2.5 pb-1.5 pt-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-faint">
+          Ferramentas
         </p>
-        {MODULO_B.map((item) => (
+        {FERRAMENTAS.map((item) => (
           <NavLink key={item.href} item={item} active={isActive(item.href)} />
         ))}
 
-        <p className="px-3 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-wider text-neutral-600">
-          Conteúdo
+        <p className="px-2.5 pb-1.5 pt-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-faint">
+          Gestão
         </p>
-        {MODULO_A.map((item) => (
+        {GESTAO.map((item) => (
           <NavLink key={item.href} item={item} active={isActive(item.href)} />
         ))}
       </nav>
 
-      <div className="space-y-2 pt-4">
-        <div className="flex items-center gap-2 px-3 text-xs text-neutral-600">
+      <div className="mt-auto space-y-1 border-t border-linesoft pt-3.5">
+        <div className="flex items-center gap-2 px-2.5 py-2 text-xs text-faint">
           <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ok opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-ok" />
           </span>
-          Ao vivo
+          Ao vivo · sincronizado
         </div>
         <a
           href="/api/logout"
-          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-500 transition-colors hover:bg-neutral-800/60 hover:text-neutral-300"
+          className="flex items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] font-medium text-muted transition-colors hover:bg-raise hover:text-ink"
         >
-          <Icon d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+          <span className="text-faint">
+            <Icon d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+          </span>
           Sair
         </a>
       </div>

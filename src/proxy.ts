@@ -23,6 +23,6 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  // Tudo, menos as rotas de API, estaticos, favicon e os mockups publicos.
-  matcher: ["/((?!api|mockup|_next/static|_next/image|favicon.ico).*)"],
+  // Tudo, menos as rotas de API, estaticos e favicon.
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
 };
