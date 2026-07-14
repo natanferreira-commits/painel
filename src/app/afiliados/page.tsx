@@ -37,8 +37,9 @@ export default async function AfiliadosPage() {
           <p className="font-medium">Não consegui carregar os afiliados.</p>
           <p className="mt-1 text-crit/80">{error}</p>
           <p className="mt-2 text-[12.5px] text-muted">
-            Se a mensagem fala de coluna inexistente, rode a migração{" "}
-            <code>supabase/migration_affiliates.sql</code> no Supabase.
+            Se a mensagem fala de tabela/coluna inexistente, rode as migrações{" "}
+            <code>supabase/migration_affiliates.sql</code> e{" "}
+            <code>supabase/migration_affiliate_channels.sql</code> no Supabase.
           </p>
         </div>
       ) : (

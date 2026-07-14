@@ -7,7 +7,7 @@ function strOrNull(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
-// Cria um afiliado.
+// Cria um afiliado (com um canal inicial opcional).
 export async function POST(req: NextRequest) {
   let body: Record<string, unknown>;
   try {
@@ -21,27 +21,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "nome é obrigatório" }, { status: 400 });
   }
 
-  const row = {
-    nome,
-    nicho: strOrNull(body.nicho),
-    telegram_channel_id: strOrNull(body.telegram_channel_id),
-    id_bot_sendpulse: strOrNull(body.id_bot_sendpulse),
-  };
-
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("affiliates")
-    .insert(row)
+    .insert({ nome, nicho: strOrNull(body.nicho) })
     .select("id")
     .single();
 
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, id: (data as { id: number } | null)?.id });
+
+  const id = (data as { id: number } | null)?.id;
+  const channelId = strOrNull(body.channel_id);
+  if (id && channelId) {
+    await supabase
+      .from("affiliate_channels")
+      .upsert(
+        { affiliate_id: id, channel_id: channelId, channel_title: strOrNull(body.channel_title) },
+        { onConflict: "affiliate_id,channel_id" },
+      );
+  }
+
+  return NextResponse.json({ ok: true, id });
 }
 
-// Edita um afiliado (mapeamento de canal/bot, nicho, ativo).
+// Edita nome / nicho / ativo de um afiliado.
 export async function PATCH(req: NextRequest) {
   let body: Record<string, unknown>;
   try {
@@ -58,8 +63,6 @@ export async function PATCH(req: NextRequest) {
   const patch: Record<string, unknown> = {};
   if (typeof body.nome === "string" && body.nome.trim()) patch.nome = body.nome.trim();
   if ("nicho" in body) patch.nicho = strOrNull(body.nicho);
-  if ("telegram_channel_id" in body) patch.telegram_channel_id = strOrNull(body.telegram_channel_id);
-  if ("id_bot_sendpulse" in body) patch.id_bot_sendpulse = strOrNull(body.id_bot_sendpulse);
   if ("ativo" in body) patch.ativo = Boolean(body.ativo);
 
   if (Object.keys(patch).length === 0) {
