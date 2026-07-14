@@ -9,7 +9,7 @@ import { StackedBars } from "@/components/StackedBars";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Perfis dos afiliados · Painel Arena",
+  title: "Perfis dos afiliados · ToolBox Arena",
 };
 
 function Stat({ label, value }: { label: string; value: string }) {
