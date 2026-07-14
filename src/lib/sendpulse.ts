@@ -84,8 +84,10 @@ type Operator = { start_item?: boolean; properties?: { body?: string } };
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
 
 function entryTagOf(detailBody: unknown): string | null {
-  const ops = (detailBody as { data?: { operators?: Operator[] } } | null)?.data
-    ?.operators;
+  // resposta = { data: fluxo }, e os blocos ficam em fluxo.data.operators.
+  const ops = (
+    detailBody as { data?: { data?: { operators?: Operator[] } } } | null
+  )?.data?.data?.operators;
   if (!Array.isArray(ops)) return null;
   const start = ops.find((o) => o?.start_item) ?? ops[0];
   const body = start?.properties?.body;
