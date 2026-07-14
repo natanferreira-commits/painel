@@ -10,30 +10,45 @@ export async function GET() {
   const supabase = getSupabaseAdmin();
 
   try {
-    const [postsTotal, uncat, lastPostRes, lastCatRes, affRes, linkRes, chSample] =
-      await Promise.all([
-        supabase.from("posts").select("*", { count: "exact", head: true }),
-        supabase
-          .from("posts")
-          .select("*", { count: "exact", head: true })
-          .is("categorized_at", null),
-        supabase
-          .from("posts")
-          .select("posted_at")
-          .order("posted_at", { ascending: false })
-          .limit(1),
-        supabase
-          .from("posts")
-          .select("categorized_at")
-          .not("categorized_at", "is", null)
-          .order("categorized_at", { ascending: false })
-          .limit(1),
-        supabase.from("affiliates").select("*", { count: "exact", head: true }),
-        supabase
-          .from("affiliate_channels")
-          .select("*", { count: "exact", head: true }),
-        supabase.from("posts").select("channel_id,channel_title").limit(5000),
-      ]);
+    const [
+      postsTotal,
+      uncat,
+      lastPostRes,
+      lastCatRes,
+      affRes,
+      linkRes,
+      chSample,
+      whTotal,
+      whLast,
+    ] = await Promise.all([
+      supabase.from("posts").select("*", { count: "exact", head: true }),
+      supabase
+        .from("posts")
+        .select("*", { count: "exact", head: true })
+        .is("categorized_at", null),
+      supabase
+        .from("posts")
+        .select("posted_at")
+        .order("posted_at", { ascending: false })
+        .limit(1),
+      supabase
+        .from("posts")
+        .select("categorized_at")
+        .not("categorized_at", "is", null)
+        .order("categorized_at", { ascending: false })
+        .limit(1),
+      supabase.from("affiliates").select("*", { count: "exact", head: true }),
+      supabase
+        .from("affiliate_channels")
+        .select("*", { count: "exact", head: true }),
+      supabase.from("posts").select("channel_id,channel_title").limit(5000),
+      supabase.from("webhook_events").select("*", { count: "exact", head: true }),
+      supabase
+        .from("webhook_events")
+        .select("received_at")
+        .order("received_at", { ascending: false })
+        .limit(1),
+    ]);
 
     // Contagem por canal (agregada em memória a partir da amostra).
     const chMap = new Map<string, { title: string; count: number }>();
@@ -79,6 +94,12 @@ export async function GET() {
       afiliados: {
         cadastrados: affRes.count ?? 0,
         canais_vinculados: linkRes.count ?? 0,
+      },
+      sendpulse: {
+        eventos_recebidos: whTotal.count ?? 0,
+        ultimo_evento:
+          (whLast.data as { received_at: string }[] | null)?.[0]?.received_at ??
+          null,
       },
       canais_detectados: channels.length,
       canais: channels,
