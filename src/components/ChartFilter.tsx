@@ -49,7 +49,7 @@ export function ChartFilter({
 
       <select
         value={params.get("canal") ?? ""}
-        onChange={(e) => setParams({ canal: e.target.value, afiliado: "" })}
+        onChange={(e) => setParams({ canal: e.target.value, afiliado: "", comp: "" })}
         className={selectClass}
       >
         <option value="">Todos os canais</option>
