@@ -1,6 +1,6 @@
 import { getPostChannels } from "@/lib/posts";
 import { getAffiliateOptions, type AffiliateOption } from "@/lib/affiliates";
-import { getTimelines, type Bucket, type Timelines } from "@/lib/analytics";
+import { getContentBuckets, type Bucket } from "@/lib/analytics";
 import {
   OBJETIVO_OF,
   OBJETIVO_ORDER,
@@ -23,27 +23,14 @@ function str(v: string | string[] | undefined): string | undefined {
   return typeof v === "string" && v ? v : undefined;
 }
 
-function sumChannels(timelines: Timelines, channelIds: string[]): Bucket[] {
-  const set = new Set(channelIds);
-  const buckets: Bucket[] = timelines.keys.map((k) => ({
-    key: k.key,
-    label: k.label,
-    total: 0,
-    byTipo: {},
-  }));
-  for (const ch of timelines.channels) {
-    if (!set.has(ch.channelId)) continue;
-    ch.buckets.forEach((b, i) => {
-      buckets[i].total += b.total;
-      for (const [t, n] of Object.entries(b.byTipo)) {
-        buckets[i].byTipo[t] = (buckets[i].byTipo[t] ?? 0) + n;
-      }
-    });
-  }
-  return buckets;
-}
-
-type CompItem = { key: string; label: string; color: string; n: number; pct: number; tipos: { tipo: string; n: number }[] };
+type CompItem = {
+  key: string;
+  label: string;
+  color: string;
+  n: number;
+  pct: number;
+  tipos: { tipo: string; n: number }[];
+};
 
 function compositionOf(buckets: Bucket[]): { total: number; composition: CompItem[] } {
   const tipoTotals: Record<string, number> = {};
@@ -159,14 +146,12 @@ export default async function ConteudoPage({ searchParams }: { searchParams: SP 
   const compIds = (str(sp.comp) ?? "").split(",").filter(Boolean);
   const windowDays = bucket === "day" ? 14 : 56;
 
-  let timelines: Timelines | null = null;
   let channels: Awaited<ReturnType<typeof getPostChannels>> = [];
   let affiliates: AffiliateOption[] = [];
   let error: string | null = null;
 
   try {
-    [timelines, channels, affiliates] = await Promise.all([
-      getTimelines(bucket),
+    [channels, affiliates] = await Promise.all([
       getPostChannels(),
       getAffiliateOptions().catch(() => [] as AffiliateOption[]),
     ]);
@@ -178,6 +163,48 @@ export default async function ConteudoPage({ searchParams }: { searchParams: SP 
     .map((id) => affiliates.find((a) => String(a.id) === id))
     .filter((a): a is AffiliateOption => Boolean(a));
   const compareMode = selectedAffs.length >= 2;
+
+  // Busca a agregação por escopo (no banco).
+  type Panel = { aff: AffiliateOption; total: number; composition: CompItem[]; semCanal: boolean };
+  type Single = { buckets: Bucket[]; total: number; composition: CompItem[]; escopo: string; semCanal: boolean };
+  let panels: Panel[] = [];
+  let single: Single | null = null;
+
+  if (!error) {
+    try {
+      if (compareMode) {
+        panels = await Promise.all(
+          selectedAffs.map(async (aff) => {
+            const semCanal = aff.channelIds.length === 0;
+            const buckets = semCanal ? [] : await getContentBuckets(bucket, aff.channelIds);
+            const { total, composition } = compositionOf(buckets);
+            return { aff, total, composition, semCanal };
+          }),
+        );
+      } else {
+        const s = selectedAffs[0];
+        let channelIds: string[] | undefined;
+        let escopo: string;
+        let semCanal = false;
+        if (s) {
+          escopo = s.nome;
+          semCanal = s.channelIds.length === 0;
+          channelIds = s.channelIds;
+        } else if (canal) {
+          channelIds = [canal];
+          escopo = channels.find((c) => c.id === canal)?.title ?? canal;
+        } else {
+          channelIds = undefined;
+          escopo = "todos os canais";
+        }
+        const buckets = semCanal ? [] : await getContentBuckets(bucket, channelIds);
+        const { total, composition } = compositionOf(buckets);
+        single = { buckets, total, composition, escopo, semCanal };
+      }
+    } catch (e) {
+      error = e instanceof Error ? e.message : "erro desconhecido";
+    }
+  }
 
   return (
     <main className="mx-auto max-w-3xl px-5 py-10 md:px-8">
@@ -194,14 +221,17 @@ export default async function ConteudoPage({ searchParams }: { searchParams: SP 
       {!compareMode && <ChartFilter channels={channels} />}
 
       {error ? (
-        <div className="rounded-xl border border-crit/40 bg-crit/10 p-4 text-sm text-crit">Erro ao carregar: {error}</div>
-      ) : !timelines ? null : compareMode ? (
-        /* ---------- MODO COMPARAÇÃO ---------- */
+        <div className="rounded-xl border border-crit/40 bg-crit/10 p-4 text-sm text-crit">
+          <p className="font-medium">Erro ao carregar.</p>
+          <p className="mt-1 text-crit/80">{error}</p>
+          <p className="mt-2 text-[12.5px] text-muted">
+            Se a mensagem fala de função inexistente, rode a migração{" "}
+            <code>supabase/migration_content_agg.sql</code> no Supabase.
+          </p>
+        </div>
+      ) : compareMode ? (
         <div className="grid gap-4 sm:grid-cols-2">
-          {selectedAffs.map((aff) => {
-            const semCanal = aff.channelIds.length === 0;
-            const buckets = sumChannels(timelines!, aff.channelIds);
-            const { total, composition } = compositionOf(buckets);
+          {panels.map(({ aff, total, composition, semCanal }) => {
             const perDay = Math.round(total / windowDays);
             return (
               <section key={aff.id} className="rounded-2xl border border-line bg-panel p-5">
@@ -222,70 +252,41 @@ export default async function ConteudoPage({ searchParams }: { searchParams: SP 
             );
           })}
         </div>
-      ) : (
-        /* ---------- MODO ÚNICO (1 afiliado / canal / todos) ---------- */
-        (() => {
-          const single = selectedAffs[0];
-          let buckets: Bucket[];
-          let escopo: string;
-          let semCanal = false;
-          if (single) {
-            escopo = single.nome;
-            semCanal = single.channelIds.length === 0;
-            buckets = sumChannels(timelines!, single.channelIds);
-          } else if (canal) {
-            const ch = timelines!.channels.find((c) => c.channelId === canal);
-            buckets = ch?.buckets ?? sumChannels(timelines!, []);
-            escopo = ch?.channelTitle ?? canal;
-          } else {
-            buckets = timelines!.aggregate;
-            escopo = "todos os canais";
-          }
-          const { total, composition } = compositionOf(buckets);
-
-          if (semCanal) {
-            return (
-              <div className="rounded-2xl border border-dashed border-line bg-panel/40 p-12 text-center">
-                <div className="text-3xl">🔗</div>
-                <div className="mt-4 font-medium">{escopo} não tem canal vinculado</div>
-                <p className="mx-auto mt-1 max-w-md text-sm text-muted">
-                  Vincule o canal do Telegram desse afiliado em <b>Afiliados</b> pra ver o conteúdo dele.
-                </p>
+      ) : single && single.semCanal ? (
+        <div className="rounded-2xl border border-dashed border-line bg-panel/40 p-12 text-center">
+          <div className="text-3xl">🔗</div>
+          <div className="mt-4 font-medium">{single.escopo} não tem canal vinculado</div>
+          <p className="mx-auto mt-1 max-w-md text-sm text-muted">
+            Vincule o canal do Telegram desse afiliado em <b>Afiliados</b> pra ver o conteúdo dele.
+          </p>
+        </div>
+      ) : single && single.total === 0 ? (
+        <div className="rounded-2xl border border-dashed border-line bg-panel/40 p-12 text-center">
+          <div className="text-3xl">📊</div>
+          <div className="mt-4 font-medium">Sem dados no período</div>
+          <p className="mx-auto mt-1 max-w-md text-sm text-muted">
+            Quando os canais postarem (e forem categorizados), o conteúdo aparece aqui.
+          </p>
+        </div>
+      ) : single ? (
+        <div className="flex flex-col gap-4">
+          <section className="rounded-2xl border border-line bg-panel p-5">
+            <div className="mb-1 flex items-baseline justify-between">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-faint">
+                Composição por objetivo · {single.escopo}
               </div>
-            );
-          }
-          if (total === 0) {
-            return (
-              <div className="rounded-2xl border border-dashed border-line bg-panel/40 p-12 text-center">
-                <div className="text-3xl">📊</div>
-                <div className="mt-4 font-medium">Sem dados no período</div>
-                <p className="mx-auto mt-1 max-w-md text-sm text-muted">
-                  Quando os canais postarem (e forem categorizados), o conteúdo aparece aqui.
-                </p>
+              <div className="text-[12px] text-muted">
+                <b className="tabular-nums text-ink">{single.total}</b> posts
               </div>
-            );
-          }
-          return (
-            <div className="flex flex-col gap-4">
-              <section className="rounded-2xl border border-line bg-panel p-5">
-                <div className="mb-1 flex items-baseline justify-between">
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-faint">
-                    Composição por objetivo · {escopo}
-                  </div>
-                  <div className="text-[12px] text-muted">
-                    <b className="tabular-nums text-ink">{total}</b> posts
-                  </div>
-                </div>
-                <p className="mb-4 text-[12.5px] text-muted">
-                  O equilíbrio do canal: quanto é aposta, resultado, captação e relacionamento.
-                </p>
-                <Composicao composition={composition} />
-              </section>
-              <TimelineObjetivo buckets={buckets} bucket={bucket} />
             </div>
-          );
-        })()
-      )}
+            <p className="mb-4 text-[12.5px] text-muted">
+              O equilíbrio do canal: quanto é aposta, resultado, captação e relacionamento.
+            </p>
+            <Composicao composition={single.composition} />
+          </section>
+          <TimelineObjetivo buckets={single.buckets} bucket={bucket} />
+        </div>
+      ) : null}
     </main>
   );
 }

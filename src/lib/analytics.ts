@@ -144,16 +144,8 @@ export type ContentSummary = {
   byTipo: { tipo: string; count: number; pct: number }[];
 };
 
-function spHour(iso: string): number {
-  const h = new Date(iso).toLocaleString("en-US", {
-    timeZone: "America/Sao_Paulo",
-    hour: "2-digit",
-    hour12: false,
-  });
-  return parseInt(h, 10) % 24;
-}
-
 // channelIds undefined = todos os canais. [] = nenhum (afiliado sem canal).
+// Agrega no banco (RPC) — sem teto de linhas, correto em qualquer escala.
 export async function getContentSummary(opts: {
   channelIds?: string[];
   sinceDays: number;
@@ -163,46 +155,34 @@ export async function getContentSummary(opts: {
   }
 
   const supabase = getSupabaseAdmin();
-  const sinceMs = Date.now() - opts.sinceDays * 86_400_000;
-  const since = new Date(sinceMs).toISOString();
+  const params = {
+    p_channel_ids: opts.channelIds ?? null,
+    p_since_days: opts.sinceDays,
+  };
+  const [tipoRes, hourRes] = await Promise.all([
+    supabase.rpc("content_tipo_counts", params),
+    supabase.rpc("content_hour_counts", params),
+  ]);
+  if (tipoRes.error) throw new Error(tipoRes.error.message);
+  if (hourRes.error) throw new Error(hourRes.error.message);
 
-  let query = supabase
-    .from("posts")
-    .select("cat_tipo,posted_at")
-    .not("categorized_at", "is", null)
-    .gte("posted_at", since)
-    .limit(20000);
-  if (opts.channelIds) query = query.in("channel_id", opts.channelIds);
-
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-  const rows = (data as { cat_tipo: string | null; posted_at: string }[] | null) ?? [];
-
-  const total = rows.length;
-  const counts = new Map<string, number>();
-  const hours = new Array(24).fill(0) as number[];
-  for (const r of rows) {
-    const tipo = r.cat_tipo ?? "outro";
-    counts.set(tipo, (counts.get(tipo) ?? 0) + 1);
-    hours[spHour(r.posted_at)]++;
-  }
-
-  const byTipo = [...counts.entries()]
-    .map(([tipo, count]) => ({
-      tipo,
-      count,
-      pct: total ? Math.round((count / total) * 100) : 0,
+  const tipoRows =
+    (tipoRes.data as { cat_tipo: string | null; cnt: number }[] | null) ?? [];
+  const total = tipoRows.reduce((s, r) => s + Number(r.cnt), 0);
+  const byTipo = tipoRows
+    .map((r) => ({
+      tipo: r.cat_tipo ?? "outro",
+      count: Number(r.cnt),
+      pct: total ? Math.round((Number(r.cnt) / total) * 100) : 0,
     }))
     .sort((a, b) => b.count - a.count);
 
   let peakHour: number | null = null;
-  if (total > 0) {
-    let max = -1;
-    for (let h = 0; h < 24; h++) {
-      if (hours[h] > max) {
-        max = hours[h];
-        peakHour = h;
-      }
+  let max = -1;
+  for (const r of (hourRes.data as { hour: number; cnt: number }[] | null) ?? []) {
+    if (Number(r.cnt) > max) {
+      max = Number(r.cnt);
+      peakHour = Number(r.hour);
     }
   }
 
@@ -212,4 +192,38 @@ export async function getContentSummary(opts: {
     peakHour,
     byTipo,
   };
+}
+
+// Volume por bucket (dia/semana) x tipo, agregado no banco (RPC content_buckets).
+// channelIds undefined = todos; [] = nenhum. Sem teto de linhas.
+export async function getContentBuckets(
+  bucket: "day" | "week",
+  channelIds?: string[],
+): Promise<Bucket[]> {
+  const today = new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/Sao_Paulo",
+  });
+  const keys = buildKeys(bucket, today);
+  const buckets = emptyBuckets(keys);
+  if (channelIds && channelIds.length === 0) return buckets;
+
+  const keyIndex = new Map(keys.map((k, i) => [k.key, i]));
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.rpc("content_buckets", {
+    p_bucket: bucket,
+    p_channel_ids: channelIds ?? null,
+  });
+  if (error) throw new Error(error.message);
+
+  for (const r of (data as
+    | { bucket_key: string; cat_tipo: string | null; cnt: number }[]
+    | null) ?? []) {
+    const idx = keyIndex.get(r.bucket_key);
+    if (idx === undefined) continue;
+    const tipo = r.cat_tipo ?? "outro";
+    const cnt = Number(r.cnt);
+    buckets[idx].total += cnt;
+    buckets[idx].byTipo[tipo] = (buckets[idx].byTipo[tipo] ?? 0) + cnt;
+  }
+  return buckets;
 }

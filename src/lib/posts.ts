@@ -65,17 +65,13 @@ export async function getPosts(filters: PostFilters = {}): Promise<PostItem[]> {
 
 export async function getPostChannels(): Promise<PostChannel[]> {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("posts")
-    .select("channel_id,channel_title")
-    .limit(2000);
+  // Agrega no banco (channel_list) — sem teto de linhas.
+  const { data, error } = await supabase.rpc("channel_list");
   if (error) throw new Error(error.message);
 
-  const map = new Map<string, string>();
-  for (const r of (data as Row[] | null ?? [])) {
-    if (r.channel_id) map.set(r.channel_id, r.channel_title ?? r.channel_id);
-  }
-  return [...map.entries()]
-    .map(([id, title]) => ({ id, title }))
+  return (
+    (data as { channel_id: string; channel_title: string | null }[] | null) ?? []
+  )
+    .map((r) => ({ id: r.channel_id, title: r.channel_title ?? r.channel_id }))
     .sort((a, b) => a.title.localeCompare(b.title));
 }
