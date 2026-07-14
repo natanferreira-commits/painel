@@ -98,3 +98,29 @@ export const GATILHO_LABEL: Record<string, string> = {
   escassez: "escassez",
   proximidade: "proximidade",
 };
+
+// Ordem, rótulo e cor por objetivo (fold dos 11 tipos em 5 grupos legíveis).
+// Paleta categórica validada (colorblind-safe) pro fundo escuro do cockpit.
+export const OBJETIVO_ORDER = [
+  "aposta",
+  "resultado",
+  "captacao",
+  "relacionamento",
+  "outro",
+] as const;
+
+export const OBJETIVO_LABEL: Record<string, string> = {
+  aposta: "Aposta",
+  resultado: "Resultado",
+  captacao: "Captação",
+  relacionamento: "Relacionamento",
+  outro: "Outro",
+};
+
+export const OBJETIVO_COLOR: Record<string, string> = {
+  aposta: "#3f86c9",
+  resultado: "#3fa084",
+  captacao: "#cf7636",
+  relacionamento: "#9560c0",
+  outro: "#8a938e",
+};
