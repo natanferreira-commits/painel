@@ -135,3 +135,81 @@ export async function getTimelines(bucket: "day" | "week"): Promise<Timelines> {
     maxAggregateBucket,
   };
 }
+
+// ---- Resumo de conteúdo (Visão geral): distribuição por tipo num período ----
+export type ContentSummary = {
+  total: number;
+  perDay: number;
+  peakHour: number | null;
+  byTipo: { tipo: string; count: number; pct: number }[];
+};
+
+function spHour(iso: string): number {
+  const h = new Date(iso).toLocaleString("en-US", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    hour12: false,
+  });
+  return parseInt(h, 10) % 24;
+}
+
+// channelIds undefined = todos os canais. [] = nenhum (afiliado sem canal).
+export async function getContentSummary(opts: {
+  channelIds?: string[];
+  sinceDays: number;
+}): Promise<ContentSummary> {
+  if (opts.channelIds && opts.channelIds.length === 0) {
+    return { total: 0, perDay: 0, peakHour: null, byTipo: [] };
+  }
+
+  const supabase = getSupabaseAdmin();
+  const sinceMs = Date.now() - opts.sinceDays * 86_400_000;
+  const since = new Date(sinceMs).toISOString();
+
+  let query = supabase
+    .from("posts")
+    .select("cat_tipo,posted_at")
+    .not("categorized_at", "is", null)
+    .gte("posted_at", since)
+    .limit(20000);
+  if (opts.channelIds) query = query.in("channel_id", opts.channelIds);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  const rows = (data as { cat_tipo: string | null; posted_at: string }[] | null) ?? [];
+
+  const total = rows.length;
+  const counts = new Map<string, number>();
+  const hours = new Array(24).fill(0) as number[];
+  for (const r of rows) {
+    const tipo = r.cat_tipo ?? "outro";
+    counts.set(tipo, (counts.get(tipo) ?? 0) + 1);
+    hours[spHour(r.posted_at)]++;
+  }
+
+  const byTipo = [...counts.entries()]
+    .map(([tipo, count]) => ({
+      tipo,
+      count,
+      pct: total ? Math.round((count / total) * 100) : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  let peakHour: number | null = null;
+  if (total > 0) {
+    let max = -1;
+    for (let h = 0; h < 24; h++) {
+      if (hours[h] > max) {
+        max = hours[h];
+        peakHour = h;
+      }
+    }
+  }
+
+  return {
+    total,
+    perDay: opts.sinceDays > 0 ? Math.round(total / opts.sinceDays) : total,
+    peakHour,
+    byTipo,
+  };
+}
