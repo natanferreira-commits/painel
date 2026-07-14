@@ -8,8 +8,37 @@ export type Affiliate = {
   nicho: string | null;
   channels: LinkedChannel[];
   sendpulseBotId: string | null;
+  sendpulseConnected: boolean; // tem credencial de API salva
   ativo: boolean;
 };
+
+export type AffiliateCreds = {
+  id: number;
+  nome: string;
+  clientId: string;
+  clientSecret: string;
+};
+
+// Afiliados que têm credencial de API do SendPulse (pra sincronização).
+export async function getAffiliatesWithSendpulse(): Promise<AffiliateCreds[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("affiliates")
+    .select("id,nome,sendpulse_client_id,sendpulse_client_secret")
+    .not("sendpulse_client_id", "is", null)
+    .not("sendpulse_client_secret", "is", null);
+  if (error) throw new Error(error.message);
+  return (
+    (data as
+      | { id: number; nome: string; sendpulse_client_id: string; sendpulse_client_secret: string }[]
+      | null) ?? []
+  ).map((r) => ({
+    id: r.id,
+    nome: r.nome,
+    clientId: r.sendpulse_client_id,
+    clientSecret: r.sendpulse_client_secret,
+  }));
+}
 
 // Opção de afiliado pra filtros: o afiliado e os ids de canal que ele agrega.
 // É o primitivo transversal — afiliado -> canais -> dados desses canais.
@@ -24,6 +53,7 @@ type AffRow = {
   nome: string;
   nicho: string | null;
   id_bot_sendpulse: string | null;
+  sendpulse_client_id: string | null;
   ativo: boolean | null;
 };
 
@@ -39,7 +69,7 @@ export async function getAffiliates(): Promise<Affiliate[]> {
   const [affsRes, linksRes] = await Promise.all([
     supabase
       .from("affiliates")
-      .select("id,nome,nicho,id_bot_sendpulse,ativo")
+      .select("id,nome,nicho,id_bot_sendpulse,sendpulse_client_id,ativo")
       .order("ativo", { ascending: false })
       .order("nome", { ascending: true }),
     supabase
@@ -65,6 +95,7 @@ export async function getAffiliates(): Promise<Affiliate[]> {
       a.title.localeCompare(b.title),
     ),
     sendpulseBotId: r.id_bot_sendpulse,
+    sendpulseConnected: Boolean(r.sendpulse_client_id),
     ativo: r.ativo ?? true,
   }));
 }

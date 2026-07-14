@@ -1,17 +1,23 @@
-// Cliente da API REST do SendPulse (chatbots). Diferente do webhook: aqui a
-// gente CONSULTA (lista fluxos, conta contatos por tag, etc.).
-// Credenciais por conta (cada afiliado tem a sua) — via env por enquanto.
+// Cliente da API REST do SendPulse (chatbots). Credenciais POR CONTA (cada
+// afiliado tem a sua) — passadas em cada chamada.
 
 const BASE = "https://api.sendpulse.com";
 
-let cached: { token: string; exp: number } | null = null;
+export type SpCreds = { clientId: string; clientSecret: string };
 
-export async function spToken(): Promise<string> {
-  const id = process.env.SENDPULSE_CLIENT_ID;
-  const secret = process.env.SENDPULSE_CLIENT_SECRET;
-  if (!id || !secret) {
-    throw new Error("SENDPULSE_CLIENT_ID / SENDPULSE_CLIENT_SECRET não configurados");
-  }
+// Cache de token por client_id.
+const tokenCache = new Map<string, { token: string; exp: number }>();
+
+// Credenciais da env (legado / conta padrão, usado pela sondagem).
+export function envCreds(): SpCreds | null {
+  const clientId = process.env.SENDPULSE_CLIENT_ID;
+  const clientSecret = process.env.SENDPULSE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return null;
+  return { clientId, clientSecret };
+}
+
+export async function spToken(creds: SpCreds): Promise<string> {
+  const cached = tokenCache.get(creds.clientId);
   if (cached && cached.exp > Date.now() + 30_000) return cached.token;
 
   const res = await fetch(`${BASE}/oauth/access_token`, {
@@ -19,26 +25,26 @@ export async function spToken(): Promise<string> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       grant_type: "client_credentials",
-      client_id: id,
-      client_secret: secret,
+      client_id: creds.clientId,
+      client_secret: creds.clientSecret,
     }),
   });
   const json = (await res.json()) as { access_token?: string; expires_in?: number };
   if (!res.ok || !json.access_token) {
-    throw new Error(`auth SendPulse falhou (${res.status}): ${JSON.stringify(json)}`);
+    throw new Error(`auth SendPulse falhou (${res.status})`);
   }
-  cached = {
+  tokenCache.set(creds.clientId, {
     token: json.access_token,
     exp: Date.now() + (json.expires_in ?? 3600) * 1000,
-  };
-  return cached.token;
+  });
+  return json.access_token;
 }
 
-// GET genérico na API. Retorna status + corpo cru (pra sondagem/discovery).
 export async function spGet(
   path: string,
+  creds: SpCreds,
 ): Promise<{ status: number; body: unknown }> {
-  const token = await spToken();
+  const token = await spToken(creds);
   const res = await fetch(`${BASE}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -60,15 +66,11 @@ export type SpFlow = {
   createdAt: string;
   botId: string;
   botName: string;
-  entryTag: string | null; // tag que o fluxo cola na entrada
-  entered: number | null; // pessoas que iniciaram = count dessa tag
+  entryTag: string | null;
+  entered: number | null;
 };
 
-type BotRow = {
-  id: string;
-  name?: string;
-  channel_data?: { name?: string };
-};
+type BotRow = { id: string; name?: string; channel_data?: { name?: string } };
 type FlowRow = {
   id: string;
   name: string;
@@ -81,7 +83,6 @@ type Operator = { start_item?: boolean; properties?: { body?: string } };
 
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
 
-// Lê a tag do bloco inicial de "atribuir tags" do fluxo.
 function entryTagOf(detailBody: unknown): string | null {
   const ops = (detailBody as { data?: { operators?: Operator[] } } | null)?.data
     ?.operators;
@@ -93,12 +94,7 @@ function entryTagOf(detailBody: unknown): string | null {
   return m ? m[1].trim() : null;
 }
 
-// Roda tarefas com um teto de concorrência.
-async function pool<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
+async function pool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
   let i = 0;
   async function worker() {
@@ -111,27 +107,24 @@ async function pool<T, R>(
   return out;
 }
 
-// Puxa os fluxos dos bots de Telegram + o nº de entrada (via tag de entrada).
-export async function getSendpulseFlows(): Promise<SpFlow[]> {
-  const botsRes = await spGet("/telegram/bots");
+// Puxa os fluxos dos bots de Telegram de uma conta + nº de entrada (via tag).
+export async function getSendpulseFlows(creds: SpCreds): Promise<SpFlow[]> {
+  const botsRes = await spGet("/telegram/bots", creds);
   const bots = (botsRes.body as { data?: BotRow[] } | null)?.data ?? [];
 
   const out: SpFlow[] = [];
   for (const b of bots) {
     const botName = b.channel_data?.name ?? b.name ?? b.id;
-
     const [flowsRes, tagsRes] = await Promise.all([
-      spGet(`/telegram/flows?bot_id=${b.id}`),
-      spGet(`/telegram/tags?bot_id=${b.id}`),
+      spGet(`/telegram/flows?bot_id=${b.id}`, creds),
+      spGet(`/telegram/tags?bot_id=${b.id}`, creds),
     ]);
     const flows = (flowsRes.body as { data?: FlowRow[] } | null)?.data ?? [];
     const tags = (tagsRes.body as { data?: TagRow[] } | null)?.data ?? [];
     const tagCount = new Map(tags.map((t) => [norm(t.name), t.count]));
 
     const enriched = await pool(flows, 8, async (f) => {
-      const detail = await spGet(
-        `/telegram/flows/get?bot_id=${b.id}&flow_id=${f.id}`,
-      );
+      const detail = await spGet(`/telegram/flows/get?bot_id=${b.id}&flow_id=${f.id}`, creds);
       const entryTag = entryTagOf(detail.body);
       const entered = entryTag ? tagCount.get(norm(entryTag)) ?? null : null;
       return { f, entryTag, entered };

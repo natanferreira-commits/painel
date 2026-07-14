@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getAffiliateOptions, type AffiliateOption } from "@/lib/affiliates";
 import { getContentSummary, type ContentSummary } from "@/lib/analytics";
+import { getCampaignFlows, type CampaignFlow } from "@/lib/campaigns";
 import { TIPO_LABEL } from "@/lib/taxonomy";
 import { DashboardFilters } from "@/components/DashboardFilters";
 
@@ -152,6 +153,18 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
     // banco indisponível / migração pendente: segue com valores vazios
   }
 
+  let campaigns: CampaignFlow[] = [];
+  try {
+    campaigns = await getCampaignFlows(selected ? [selected.id] : undefined);
+  } catch {
+    campaigns = [];
+  }
+  const topCampaigns = campaigns
+    .filter((c) => c.entered !== null)
+    .sort((a, b) => (b.entered ?? 0) - (a.entered ?? 0))
+    .slice(0, 6);
+  const totalEntered = campaigns.reduce((s, c) => s + (c.entered ?? 0), 0);
+
   const rows = distRows(summary);
   const escopoLabel = selected ? selected.nome : "todos os afiliados";
 
@@ -183,20 +196,45 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
         {/* ROW A */}
         <div className="grid gap-4 lg:grid-cols-3">
           <section className="flex flex-col rounded-xl border border-line bg-panel lg:col-span-2">
-            <CardHead d="M13 2L3 14h8l-1 8 10-12h-8z" title="Últimas ações & resultados" cap="Funil de cada ação — entraram, CTR, leads, conversão" />
+            <CardHead d="M21 6H3M18 12H6M14 18h-4" title="Campanhas" cap={`Quem iniciou cada fluxo · ${escopoLabel}`} href="/campanhas" />
             <div className="p-[18px]">
-              <div className="flex min-h-[200px] flex-col items-center justify-center rounded-lg px-6 py-6 text-center">
-                <div className="mb-3.5 grid h-[42px] w-[42px] place-items-center rounded-xl border border-line bg-panel2 text-muted">
-                  <I d="M22 12h-4l-3 9L9 3l-3 9H2" cls="h-5 w-5" />
+              {topCampaigns.length === 0 ? (
+                <div className="flex min-h-[200px] flex-col items-center justify-center rounded-lg px-6 py-6 text-center">
+                  <div className="mb-3.5 grid h-[42px] w-[42px] place-items-center rounded-xl border border-line bg-panel2 text-muted">
+                    <I d="M21 6H3M18 12H6M14 18h-4" cls="h-5 w-5" />
+                  </div>
+                  <h3 className="mb-1.5 text-sm font-semibold">Sem campanhas sincronizadas</h3>
+                  <p className="max-w-[330px] text-[12.5px] leading-relaxed text-muted">
+                    Conecte o SendPulse dos afiliados em <b>Afiliados</b> e sincronize em <b>Campanhas</b>.
+                  </p>
                 </div>
-                <h3 className="mb-1.5 text-sm font-semibold">Ainda não medimos as ações</h3>
-                <p className="max-w-[330px] text-[12.5px] leading-relaxed text-muted">
-                  Aqui vai entrar cada ação da semana com seu funil — entraram, CTR e conversão. Falta ligar o registro de ações e o resultado dos fluxos.
-                </p>
-                <span className="mt-3.5 inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-[11px] text-faint">
-                  Conecta: <b className="font-semibold text-warn">API de campanhas do SendPulse</b> + registro de ações
-                </span>
-              </div>
+              ) : (
+                <>
+                  <div className="mb-4 flex gap-6">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[19px] font-bold tabular-nums">{campaigns.length}</span>
+                      <span className="text-[11px] text-muted">fluxos</span>
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[19px] font-bold tabular-nums">{totalEntered.toLocaleString("pt-BR")}</span>
+                      <span className="text-[11px] text-muted">pessoas (soma)</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2.5">
+                    {topCampaigns.map((c) => (
+                      <div key={c.flowId} className="flex items-center gap-3">
+                        <span className="min-w-0 flex-1 truncate text-[13px]">{c.name}</span>
+                        {!selected && (
+                          <span className="shrink-0 text-[11px] text-faint">{c.affiliateNome}</span>
+                        )}
+                        <span className="shrink-0 text-[13px] font-semibold tabular-nums">
+                          {(c.entered ?? 0).toLocaleString("pt-BR")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </section>
 

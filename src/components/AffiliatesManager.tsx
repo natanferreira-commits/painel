@@ -29,6 +29,9 @@ export function AffiliatesManager({
   const [nome, setNome] = useState("");
   const [nicho, setNicho] = useState("");
   const [canal, setCanal] = useState("");
+  const [spOpen, setSpOpen] = useState<number | null>(null);
+  const [spId, setSpId] = useState("");
+  const [spSecret, setSpSecret] = useState("");
 
   async function call(
     path: string,
@@ -88,6 +91,20 @@ export function AffiliatesManager({
       affiliate_id: affiliateId,
       channel_id: channelId,
     });
+  }
+
+  async function saveCreds(affiliateId: number) {
+    if (!spId.trim() || !spSecret.trim()) return;
+    const ok = await call("/api/affiliates", "PATCH", {
+      id: affiliateId,
+      sendpulse_client_id: spId,
+      sendpulse_client_secret: spSecret,
+    });
+    if (ok) {
+      setSpOpen(null);
+      setSpId("");
+      setSpSecret("");
+    }
   }
 
   const inputCls =
@@ -221,6 +238,60 @@ export function AffiliatesManager({
                         <option key={c.id} value={c.id}>{c.title}</option>
                       ))}
                     </select>
+                  )}
+                </div>
+
+                {/* SendPulse */}
+                <div className="mt-3 border-t border-linesoft pt-3">
+                  {spOpen === a.id ? (
+                    <div className="flex flex-wrap items-end gap-2">
+                      <input
+                        className={`${inputCls} min-w-[180px] flex-1`}
+                        placeholder="SendPulse client_id"
+                        value={spId}
+                        onChange={(e) => setSpId(e.target.value)}
+                      />
+                      <input
+                        className={`${inputCls} min-w-[180px] flex-1`}
+                        placeholder="SendPulse client_secret"
+                        value={spSecret}
+                        onChange={(e) => setSpSecret(e.target.value)}
+                      />
+                      <button
+                        onClick={() => saveCreds(a.id)}
+                        disabled={busy || !spId.trim() || !spSecret.trim()}
+                        className="rounded-lg bg-lime px-3 py-2 text-[12.5px] font-semibold text-[#06120c] disabled:opacity-40"
+                      >
+                        Salvar
+                      </button>
+                      <button
+                        onClick={() => setSpOpen(null)}
+                        className="px-2 py-2 text-[12.5px] text-muted hover:text-ink"
+                      >
+                        cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-[12px]">
+                      <span className="text-faint">SendPulse:</span>
+                      {a.sendpulseConnected ? (
+                        <span className="inline-flex items-center gap-1.5 text-ok">
+                          <span className="h-[7px] w-[7px] rounded-full bg-ok" /> conectado
+                        </span>
+                      ) : (
+                        <span className="text-muted">não conectado</span>
+                      )}
+                      <button
+                        onClick={() => {
+                          setSpOpen(a.id);
+                          setSpId("");
+                          setSpSecret("");
+                        }}
+                        className="ml-1 text-muted underline decoration-dotted transition-colors hover:text-lime"
+                      >
+                        {a.sendpulseConnected ? "trocar chave" : "conectar"}
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
