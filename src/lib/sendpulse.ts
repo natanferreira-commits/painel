@@ -159,7 +159,14 @@ async function pool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>
   return out;
 }
 
+// Bot de atendimento não roda campanha — os fluxos dele (resposta padrão,
+// menu de suporte, etc.) só poluem a leitura. Toda conta segue o mesmo
+// padrão: um bot "Suporte X" e o principal. Ex: "Suporte ZZ",
+// "suportecabreloa", "Suporte Gol do Rayo".
+const EH_BOT_SUPORTE = /suporte|support/i;
+
 // Puxa os fluxos dos bots de Telegram de uma conta + nº de entrada (via tag).
+// Ignora o bot de atendimento.
 export async function getSendpulseFlows(creds: SpCreds): Promise<SpFlow[]> {
   const botsRes = await spGet("/telegram/bots", creds);
   const bots = (botsRes.body as { data?: BotRow[] } | null)?.data ?? [];
@@ -167,6 +174,7 @@ export async function getSendpulseFlows(creds: SpCreds): Promise<SpFlow[]> {
   const out: SpFlow[] = [];
   for (const b of bots) {
     const botName = b.channel_data?.name ?? b.name ?? b.id;
+    if (EH_BOT_SUPORTE.test(botName)) continue;
     const [flowsRes, tagsRes] = await Promise.all([
       spGet(`/telegram/flows?bot_id=${b.id}`, creds),
       spGet(`/telegram/tags?bot_id=${b.id}`, creds),

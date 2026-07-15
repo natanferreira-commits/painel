@@ -21,7 +21,12 @@ async function run() {
     );
   }
 
-  const results: { afiliado: string; fluxos?: number; erro?: string }[] = [];
+  const results: {
+    afiliado: string;
+    fluxos?: number;
+    bots?: string[];
+    erro?: string;
+  }[] = [];
   for (const a of affs) {
     try {
       const flows = await getSendpulseFlows({
@@ -49,7 +54,12 @@ async function run() {
         const { error } = await supabase.from("campaign_flows").insert(rows);
         if (error) throw new Error(error.message);
       }
-      results.push({ afiliado: a.nome, fluxos: flows.length });
+      results.push({
+        afiliado: a.nome,
+        fluxos: flows.length,
+        // bots considerados (o de atendimento é ignorado de propósito)
+        bots: [...new Set(flows.map((f) => f.botName))],
+      });
     } catch (e) {
       results.push({ afiliado: a.nome, erro: e instanceof Error ? e.message : String(e) });
     }
