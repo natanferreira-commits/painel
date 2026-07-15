@@ -1,4 +1,5 @@
-import { getPostChannels } from "@/lib/posts";
+import Link from "next/link";
+import { getPostChannels, getPostsByDay, type PostItem } from "@/lib/posts";
 import { getAffiliateOptions, type AffiliateOption } from "@/lib/affiliates";
 import { getContentBuckets, type Bucket } from "@/lib/analytics";
 import {
@@ -7,6 +8,7 @@ import {
   OBJETIVO_LABEL,
   OBJETIVO_COLOR,
   TIPO_LABEL,
+  GATILHO_LABEL,
 } from "@/lib/taxonomy";
 import { ChartFilter } from "@/components/ChartFilter";
 import { CompareSelector } from "@/components/CompareSelector";
@@ -91,7 +93,17 @@ function Composicao({ composition, showTipos = true }: { composition: CompItem[]
   );
 }
 
-function TimelineObjetivo({ buckets, bucket }: { buckets: Bucket[]; bucket: "day" | "week" }) {
+function TimelineObjetivo({
+  buckets,
+  bucket,
+  hrefDia,
+  diaAtivo,
+}: {
+  buckets: Bucket[];
+  bucket: "day" | "week";
+  hrefDia?: (key: string) => string;
+  diaAtivo?: string;
+}) {
   const H = 190;
   const timeline = buckets.map((b) => {
     const byObj: Record<string, number> = {};
@@ -99,7 +111,7 @@ function TimelineObjetivo({ buckets, bucket }: { buckets: Bucket[]; bucket: "day
       const o = OBJETIVO_OF[t] ?? "outro";
       byObj[o] = (byObj[o] ?? 0) + n;
     }
-    return { label: b.label, byObj };
+    return { key: b.key, label: b.label, total: b.total, byObj };
   });
   const maxCol = Math.max(1, ...timeline.map((t) => Object.values(t.byObj).reduce((s, n) => s + n, 0)));
   const presentes = OBJETIVO_ORDER.filter((o) => timeline.some((t) => (t.byObj[o] ?? 0) > 0));
@@ -109,7 +121,10 @@ function TimelineObjetivo({ buckets, bucket }: { buckets: Bucket[]; bucket: "day
       <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-faint">
         Volume no tempo · por {bucket === "day" ? "dia" : "semana"}
       </div>
-      <p className="mb-4 text-[12.5px] text-muted">Quanto foi postado e de que objetivo, ao longo do período.</p>
+      <p className="mb-4 text-[12.5px] text-muted">
+        Quanto foi postado e de que objetivo, ao longo do período.
+        {hrefDia && " Clique num dia pra ler o que foi postado."}
+      </p>
       <div className="mb-4 flex flex-wrap gap-x-4 gap-y-1.5 text-[12px]">
         {presentes.map((o) => (
           <span key={o} className="inline-flex items-center gap-1.5 text-muted">
@@ -119,22 +134,175 @@ function TimelineObjetivo({ buckets, bucket }: { buckets: Bucket[]; bucket: "day
         ))}
       </div>
       <div className="flex items-end gap-1.5" style={{ height: H + 22 }}>
-        {timeline.map((col, i) => (
-          <div key={i} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
-            <div className="flex w-full flex-col-reverse gap-[2px]" style={{ height: H }}>
-              {OBJETIVO_ORDER.filter((o) => (col.byObj[o] ?? 0) > 0).map((o) => (
-                <div
-                  key={o}
-                  className="w-full rounded-[2px]"
-                  style={{ height: `${((col.byObj[o] ?? 0) / maxCol) * H}px`, background: OBJETIVO_COLOR[o] }}
-                  title={`${OBJETIVO_LABEL[o]}: ${col.byObj[o]}`}
-                />
-              ))}
-            </div>
-            <span className="text-[10px] text-faint">{col.label}</span>
-          </div>
-        ))}
+        {timeline.map((col) => {
+          const ativo = diaAtivo === col.key;
+          const barras = (
+            <>
+              <div className="flex w-full flex-col-reverse gap-[2px]" style={{ height: H }}>
+                {OBJETIVO_ORDER.filter((o) => (col.byObj[o] ?? 0) > 0).map((o) => (
+                  <div
+                    key={o}
+                    className="w-full rounded-[2px]"
+                    style={{ height: `${((col.byObj[o] ?? 0) / maxCol) * H}px`, background: OBJETIVO_COLOR[o] }}
+                    title={`${OBJETIVO_LABEL[o]}: ${col.byObj[o]}`}
+                  />
+                ))}
+              </div>
+              <span className={`text-[10px] ${ativo ? "font-semibold text-lime" : "text-faint"}`}>
+                {col.label}
+              </span>
+            </>
+          );
+
+          if (!hrefDia) {
+            return (
+              <div key={col.key} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
+                {barras}
+              </div>
+            );
+          }
+          return (
+            <Link
+              key={col.key}
+              href={hrefDia(col.key)}
+              scroll={false}
+              title={`${col.total} posts — ver o que foi postado`}
+              className={`flex min-w-0 flex-1 flex-col items-center gap-1.5 rounded-[3px] pt-1 transition-colors hover:bg-raise ${
+                ativo ? "bg-lime/10" : ""
+              }`}
+            >
+              {barras}
+            </Link>
+          );
+        })}
       </div>
+    </section>
+  );
+}
+
+/* ---------- histórico: o que foi postado num dia ---------- */
+function horaSP(iso: string) {
+  return new Date(iso).toLocaleTimeString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+const MEDIA_LABEL: Record<string, string> = {
+  text: "texto",
+  photo: "imagem",
+  video: "vídeo",
+  video_note: "vídeo bolinha",
+  animation: "gif",
+  voice: "áudio",
+  audio: "áudio",
+  document: "arquivo",
+  poll: "enquete",
+};
+
+function PostsDoDia({
+  posts,
+  dia,
+  escopo,
+  hrefLimpar,
+  multiCanal,
+}: {
+  posts: PostItem[];
+  dia: string;
+  escopo: string;
+  hrefLimpar: string;
+  multiCanal: boolean;
+}) {
+  const dataBR = dia.split("-").reverse().join("/");
+  return (
+    <section className="overflow-hidden rounded-2xl border border-lime/30 bg-panel">
+      <div className="flex flex-wrap items-baseline gap-2 border-b border-linesoft px-5 py-4">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-lime">
+            O que foi postado
+          </div>
+          <h2 className="mt-0.5 text-[15px] font-semibold">
+            {dataBR} · {escopo}
+          </h2>
+        </div>
+        <span className="text-[12px] text-faint">
+          {posts.length} {posts.length === 1 ? "post" : "posts"}
+        </span>
+        <Link
+          href={hrefLimpar}
+          scroll={false}
+          className="ml-auto text-[12.5px] text-muted transition-colors hover:text-ink"
+        >
+          fechar
+        </Link>
+      </div>
+
+      {posts.length === 0 ? (
+        <p className="px-5 py-8 text-center text-[13px] text-muted">
+          Nenhum post nesse dia.
+        </p>
+      ) : (
+        <ul className="divide-y divide-linesoft">
+          {posts.map((p) => {
+            const obj = OBJETIVO_OF[p.tipo ?? "outro"] ?? "outro";
+            return (
+              <li key={p.id} className="flex gap-3 px-5 py-3.5">
+                <div className="flex w-11 shrink-0 flex-col items-center gap-1.5 pt-0.5">
+                  <span className="text-[11.5px] tabular-nums text-faint">
+                    {horaSP(p.postedAt)}
+                  </span>
+                  <span
+                    className="h-2.5 w-2.5 rounded-[3px]"
+                    style={{ background: OBJETIVO_COLOR[obj] }}
+                    title={OBJETIVO_LABEL[obj]}
+                  />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                    <span className="rounded-full border border-line px-1.5 py-0.5 font-medium text-muted">
+                      {TIPO_LABEL[p.tipo ?? "outro"] ?? p.tipo}
+                    </span>
+                    {p.mediaType && p.mediaType !== "text" && (
+                      <span className="rounded-full border border-line px-1.5 py-0.5 text-faint">
+                        {MEDIA_LABEL[p.mediaType] ?? p.mediaType}
+                      </span>
+                    )}
+                    {p.temLink && (
+                      <span className="rounded-full border border-line px-1.5 py-0.5 text-faint">
+                        link
+                      </span>
+                    )}
+                    {p.casa && (
+                      <span className="rounded-full border border-line px-1.5 py-0.5 text-faint">
+                        {p.casa}
+                      </span>
+                    )}
+                    {p.gatilho && p.gatilho !== "nenhum" && (
+                      <span className="rounded-full border border-line px-1.5 py-0.5 text-faint">
+                        {GATILHO_LABEL[p.gatilho] ?? p.gatilho}
+                      </span>
+                    )}
+                    {multiCanal && p.channelTitle && (
+                      <span className="text-faint">· {p.channelTitle}</span>
+                    )}
+                  </div>
+                  {p.text ? (
+                    <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink">
+                      {p.text}
+                    </p>
+                  ) : (
+                    <p className="text-[13px] italic text-faint">
+                      (sem texto — só {MEDIA_LABEL[p.mediaType ?? ""] ?? "mídia"})
+                    </p>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 }
@@ -166,7 +334,14 @@ export default async function ConteudoPage({ searchParams }: { searchParams: SP 
 
   // Busca a agregação por escopo (no banco).
   type Panel = { aff: AffiliateOption; total: number; composition: CompItem[]; semCanal: boolean };
-  type Single = { buckets: Bucket[]; total: number; composition: CompItem[]; escopo: string; semCanal: boolean };
+  type Single = {
+    buckets: Bucket[];
+    total: number;
+    composition: CompItem[];
+    escopo: string;
+    semCanal: boolean;
+    channelIds?: string[];
+  };
   let panels: Panel[] = [];
   let single: Single | null = null;
 
@@ -199,12 +374,40 @@ export default async function ConteudoPage({ searchParams }: { searchParams: SP 
         }
         const buckets = semCanal ? [] : await getContentBuckets(bucket, channelIds);
         const { total, composition } = compositionOf(buckets);
-        single = { buckets, total, composition, escopo, semCanal };
+        single = { buckets, total, composition, escopo, semCanal, channelIds };
       }
     } catch (e) {
       error = e instanceof Error ? e.message : "erro desconhecido";
     }
   }
+
+  // ---- drill-down: o que foi postado num dia ----
+  // Só faz sentido no modo dia (a barra é um dia) e fora da comparação.
+  const diaSel =
+    bucket === "day" && !compareMode && /^\d{4}-\d{2}-\d{2}$/.test(str(sp.dia) ?? "")
+      ? (str(sp.dia) as string)
+      : null;
+
+  let postsDoDia: PostItem[] = [];
+  if (diaSel && single && !single.semCanal) {
+    try {
+      postsDoDia = await getPostsByDay({ channelIds: single.channelIds, day: diaSel });
+    } catch {
+      postsDoDia = [];
+    }
+  }
+
+  // preserva os filtros ao montar os links do drill-down
+  const baseParams = new URLSearchParams();
+  for (const [k, v] of Object.entries(sp)) {
+    if (k !== "dia" && typeof v === "string" && v) baseParams.set(k, v);
+  }
+  const hrefDia = (key: string) => {
+    const p = new URLSearchParams(baseParams);
+    p.set("dia", key);
+    return `?${p.toString()}`;
+  };
+  const hrefLimpar = `?${baseParams.toString()}`;
 
   return (
     <main className="mx-auto max-w-3xl px-5 py-10 md:px-8">
@@ -284,7 +487,21 @@ export default async function ConteudoPage({ searchParams }: { searchParams: SP 
             </p>
             <Composicao composition={single.composition} />
           </section>
-          <TimelineObjetivo buckets={single.buckets} bucket={bucket} />
+          <TimelineObjetivo
+            buckets={single.buckets}
+            bucket={bucket}
+            hrefDia={bucket === "day" ? hrefDia : undefined}
+            diaAtivo={diaSel ?? undefined}
+          />
+          {diaSel && (
+            <PostsDoDia
+              posts={postsDoDia}
+              dia={diaSel}
+              escopo={single.escopo}
+              hrefLimpar={hrefLimpar}
+              multiCanal={(single.channelIds?.length ?? 0) !== 1}
+            />
+          )}
         </div>
       ) : null}
     </main>
