@@ -8,12 +8,27 @@ export function tgKey(): string | null {
   return process.env.TRACKGRAM_API_KEY || null;
 }
 
+const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// A API deles dá 500 esporádico sob carga (a mesma chamada que falha volta 200
+// segundos depois) e 429 no rate limit. Então: repete em 5xx/429, com backoff.
+async function fetchComRetry(url: string, key: string, tentativas = 3): Promise<Response> {
+  let ultima: Response | null = null;
+  for (let i = 0; i < tentativas; i++) {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${key}` } });
+    if (res.status < 500 && res.status !== 429) return res;
+    ultima = res;
+    if (i === tentativas - 1) break;
+    const retryAfter = Number(res.headers.get("retry-after") ?? 0);
+    await espera(retryAfter > 0 ? retryAfter * 1000 : 700 * Math.pow(3, i));
+  }
+  return ultima as Response;
+}
+
 export async function tgGet(path: string): Promise<{ status: number; body: unknown }> {
   const key = tgKey();
   if (!key) throw new Error("TRACKGRAM_API_KEY não configurada");
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { Authorization: `Bearer ${key}` },
-  });
+  const res = await fetchComRetry(`${BASE}${path}`, key);
   let body: unknown;
   try {
     body = await res.json();
