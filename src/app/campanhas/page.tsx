@@ -8,6 +8,7 @@ import {
 import { getAffiliateOptions, type AffiliateOption } from "@/lib/affiliates";
 import { SyncButton } from "@/components/SyncButton";
 import { CampaignFilters } from "@/components/CampaignFilters";
+import { CampaignLineChart, type Serie, type Ponto } from "@/components/CampaignLineChart";
 
 export const dynamic = "force-dynamic";
 
@@ -22,12 +23,21 @@ function str(v: string | string[] | undefined): string | undefined {
 }
 
 const CAT_ORDER = ["aposta_segura", "boas_vindas"] as const;
-
-// Paleta categórica validada (colorblind-safe no fundo escuro).
 const CAT_COLOR: Record<string, string> = {
   aposta_segura: "#3f86c9",
   boas_vindas: "#cf7636",
 };
+
+// Paleta categórica de 7 (validada: colorblind-safe no fundo escuro).
+const AF_COLORS = [
+  "#3f86c9",
+  "#3fa084",
+  "#cf7636",
+  "#9560c0",
+  "#c05a86",
+  "#8a9b3f",
+  "#2f9fb5",
+];
 
 function conversaoColor(v: number | null) {
   if (v === null) return "text-faint";
@@ -37,50 +47,6 @@ function conversaoColor(v: number | null) {
 }
 
 const fmt = (n: number) => n.toLocaleString("pt-BR");
-
-/* ---------- barra: comprimento = entrou · preenchido = chegou ---------- */
-function BarraFunil({
-  entered,
-  reached,
-  maxEntered,
-  cor,
-}: {
-  entered: number;
-  reached: number;
-  maxEntered: number;
-  cor: string;
-}) {
-  const larguraPct = maxEntered > 0 ? (entered / maxEntered) * 100 : 0;
-  const fillPct = entered > 0 ? Math.min(100, (reached / entered) * 100) : 0;
-  return (
-    <div className="h-3 w-full">
-      <div
-        className="h-3 overflow-hidden rounded-[3px] bg-raise"
-        style={{ width: `${Math.max(1.5, larguraPct)}%` }}
-        title={`${fmt(entered)} entraram · ${fmt(reached)} chegaram no fim`}
-      >
-        <div
-          className="h-full rounded-[3px]"
-          style={{ width: `${Math.max(fillPct > 0 ? 1.5 : 0, fillPct)}%`, background: cor }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function Legenda() {
-  return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-faint">
-      <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-6 rounded-[3px] bg-raise" /> entraram
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-3 rounded-[3px]" style={{ background: CAT_COLOR.aposta_segura }} />
-        chegaram no fim (a parte colorida é a conversão)
-      </span>
-    </div>
-  );
-}
 
 export default async function CampanhasPage({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
@@ -93,7 +59,6 @@ export default async function CampanhasPage({ searchParams }: { searchParams: SP
       ? (catParam as CampaignCategory)
       : undefined;
 
-  // Busca TODOS os afiliados (o comparativo precisa de todos, mesmo filtrando um).
   let todos: CampaignFlow[] = [];
   let lastSync: string | null = null;
   let affiliates: AffiliateOption[] = [];
@@ -111,18 +76,25 @@ export default async function CampanhasPage({ searchParams }: { searchParams: SP
 
   const escopo = afId ? todos.filter((f) => String(f.affiliateId) === afId) : todos;
 
-  // ---- comparativo entre afiliados ----
+  // Cor por afiliado, estável: sai da lista completa, então não muda ao filtrar.
+  const ordemAf = affiliates.map((a) => a.nome).sort((a, b) => a.localeCompare(b));
+  const corDe = (nome: string) =>
+    AF_COLORS[Math.max(0, ordemAf.indexOf(nome)) % AF_COLORS.length];
+
+  // ---- comparativo entre afiliados (números) ----
   const porAfiliado = (() => {
-    const m = new Map<string, { nome: string; id: number; entered: number; reached: number }>();
+    const m = new Map<string, { nome: string; id: number; entered: number; reached: number; n: number }>();
     for (const f of todos) {
       const cur = m.get(f.affiliateNome) ?? {
         nome: f.affiliateNome,
         id: f.affiliateId,
         entered: 0,
         reached: 0,
+        n: 0,
       };
       cur.entered += f.entered ?? 0;
       cur.reached += f.reached ?? 0;
+      cur.n += 1;
       m.set(f.affiliateNome, cur);
     }
     return [...m.values()]
@@ -133,16 +105,30 @@ export default async function CampanhasPage({ searchParams }: { searchParams: SP
       .filter((a) => a.entered > 0)
       .sort((a, b) => (b.conversao ?? -1) - (a.conversao ?? -1));
   })();
-  const maxEnteredAf = Math.max(1, ...porAfiliado.map((a) => a.entered));
 
-  // ---- gráfico das campanhas (escopo atual) ----
-  const grafico = [...escopo]
-    .filter((f) => (f.entered ?? 0) > 0)
-    .sort((a, b) => (b.entered ?? 0) - (a.entered ?? 0))
-    .slice(0, 12);
-  const maxEnteredCamp = Math.max(1, ...grafico.map((f) => f.entered ?? 0));
+  // ---- série pro gráfico de linhas: data da campanha x quem entrou ----
+  const series: Serie[] = (() => {
+    const porAf = new Map<string, Map<string, Ponto>>();
+    for (const f of escopo) {
+      if (!f.flowCreatedAt || !f.entered || f.entered <= 0) continue;
+      const dia = f.flowCreatedAt.slice(0, 10);
+      const m = porAf.get(f.affiliateNome) ?? new Map<string, Ponto>();
+      const p = m.get(dia) ?? { date: dia, entered: 0, campanhas: [] };
+      p.entered += f.entered;
+      p.campanhas.push(`${f.name}: ${fmt(f.entered)}`);
+      m.set(dia, p);
+      porAf.set(f.affiliateNome, m);
+    }
+    return [...porAf.entries()]
+      .map(([nome, m]) => ({
+        nome,
+        cor: corDe(nome),
+        pontos: [...m.values()].sort((a, b) => a.date.localeCompare(b.date)),
+      }))
+      .sort((a, b) => a.nome.localeCompare(b.nome));
+  })();
 
-  // ---- tabela (escopo atual), agrupada por afiliado > categoria ----
+  // ---- tabela ----
   const grupos = (() => {
     const byAff = new Map<string, CampaignFlow[]>();
     for (const f of escopo) {
@@ -217,100 +203,84 @@ export default async function CampanhasPage({ searchParams }: { searchParams: SP
         </div>
       ) : (
         <div className="flex flex-col gap-4">
-          {/* ---- 1. COMPARATIVO ENTRE AFILIADOS ---- */}
-          {porAfiliado.length > 1 && (
+          {/* ---- 1. GRÁFICO DE LINHAS: tempo x pessoas que entraram ---- */}
+          {series.length > 0 && (
             <section className="rounded-2xl border border-line bg-panel p-5">
               <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-faint">
-                Comparativo entre afiliados
+                Entradas por campanha, ao longo do tempo
               </div>
               <p className="mb-4 text-[12.5px] text-muted">
-                Quem converte melhor no mesmo tipo de campanha. Ordenado por conversão.
+                Cada ponto é uma campanha (na data em que foi criada) e quantas pessoas entraram
+                nela. Passe o mouse pra ver quais campanhas.
               </p>
-              <div className="flex flex-col gap-3.5">
-                {porAfiliado.map((a) => {
-                  const destaque = afId ? String(a.id) === afId : false;
-                  return (
-                    <div key={a.nome} className={destaque ? "" : afId ? "opacity-45" : ""}>
-                      <div className="mb-1 flex items-baseline gap-2">
-                        <span className="text-[13px] font-medium">{a.nome}</span>
-                        <span className="ml-auto text-[12px] tabular-nums text-muted">
-                          {fmt(a.entered)} → {fmt(a.reached)}
-                        </span>
-                        <span
-                          className={`w-12 text-right text-[13px] font-semibold tabular-nums ${conversaoColor(a.conversao)}`}
-                        >
-                          {a.conversao !== null ? `${a.conversao}%` : "—"}
-                        </span>
-                      </div>
-                      <BarraFunil
-                        entered={a.entered}
-                        reached={a.reached}
-                        maxEntered={maxEnteredAf}
-                        cor={CAT_COLOR.aposta_segura}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="mt-4 border-t border-linesoft pt-3">
-                <Legenda />
-              </div>
+
+              {series.length > 1 && (
+                <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1.5 text-[12px]">
+                  {series.map((s) => (
+                    <span key={s.nome} className="inline-flex items-center gap-1.5 text-muted">
+                      <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: s.cor }} />
+                      {s.nome}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <CampaignLineChart series={series} />
             </section>
           )}
 
-          {/* ---- 2. GRÁFICO DAS CAMPANHAS ---- */}
-          {grafico.length > 0 && (
-            <section className="rounded-2xl border border-line bg-panel p-5">
-              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-faint">
-                Campanhas {afId ? "" : "· todos os afiliados"}
+          {/* ---- 2. COMPARATIVO ENTRE AFILIADOS (números) ---- */}
+          {porAfiliado.length > 1 && (
+            <section className="overflow-hidden rounded-2xl border border-line bg-panel">
+              <div className="border-b border-linesoft px-5 pb-3 pt-5">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-faint">
+                  Comparativo entre afiliados
+                </div>
+                <p className="mt-1 text-[12.5px] text-muted">
+                  Ordenado por conversão. Mostra todos, mesmo com um afiliado filtrado.
+                </p>
               </div>
-              <p className="mb-4 text-[12.5px] text-muted">
-                As {grafico.length} maiores por entrada. A cor separa a categoria.
-              </p>
-              <div className="flex flex-col gap-3.5">
-                {grafico.map((f) => (
-                  <div key={f.flowId}>
-                    <div className="mb-1 flex items-baseline gap-2">
+
+              <div className="grid grid-cols-[1fr_58px_70px_66px_58px] gap-2 border-b border-linesoft px-5 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-faint">
+                <span>Afiliado</span>
+                <span className="text-right">Camp.</span>
+                <span className="text-right">Entrou</span>
+                <span className="text-right">Chegou</span>
+                <span className="text-right">Conv.</span>
+              </div>
+
+              <ul className="divide-y divide-linesoft">
+                {porAfiliado.map((a) => (
+                  <li
+                    key={a.nome}
+                    className={`grid grid-cols-[1fr_58px_70px_66px_58px] items-center gap-2 px-5 py-3 ${
+                      afId && String(a.id) !== afId ? "opacity-45" : ""
+                    }`}
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
                       <span
                         className="h-2.5 w-2.5 shrink-0 rounded-[3px]"
-                        style={{ background: CAT_COLOR[f.category] ?? "#8a938e" }}
+                        style={{ background: corDe(a.nome) }}
                       />
-                      <span className="min-w-0 truncate text-[13px]" title={f.name}>
-                        {f.name}
-                      </span>
-                      {!afId && (
-                        <span className="shrink-0 text-[11px] text-faint">{f.affiliateNome}</span>
-                      )}
-                      <span className="ml-auto shrink-0 text-[12px] tabular-nums text-muted">
-                        {fmt(f.entered ?? 0)} → {fmt(f.reached ?? 0)}
-                      </span>
-                      <span
-                        className={`w-12 shrink-0 text-right text-[13px] font-semibold tabular-nums ${conversaoColor(f.conversao)}`}
-                      >
-                        {f.conversao !== null ? `${f.conversao}%` : "—"}
-                      </span>
-                    </div>
-                    <BarraFunil
-                      entered={f.entered ?? 0}
-                      reached={f.reached ?? 0}
-                      maxEntered={maxEnteredCamp}
-                      cor={CAT_COLOR[f.category] ?? "#8a938e"}
-                    />
-                  </div>
+                      <span className="truncate text-[13.5px]">{a.nome}</span>
+                    </span>
+                    <span className="text-right text-[13px] tabular-nums text-muted">{a.n}</span>
+                    <span className="text-right text-[13px] tabular-nums">{fmt(a.entered)}</span>
+                    <span className="text-right text-[13px] tabular-nums text-muted">
+                      {fmt(a.reached)}
+                    </span>
+                    <span
+                      className={`text-right text-[13px] font-semibold tabular-nums ${conversaoColor(a.conversao)}`}
+                    >
+                      {a.conversao !== null ? `${a.conversao}%` : "—"}
+                    </span>
+                  </li>
                 ))}
-              </div>
-              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t border-linesoft pt-3 text-[11.5px] text-muted">
-                {CAT_ORDER.map((c) => (
-                  <span key={c} className="inline-flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: CAT_COLOR[c] }} />
-                    {CATEGORY_LABEL[c]}
-                  </span>
-                ))}
-              </div>
+              </ul>
             </section>
           )}
 
-          {/* ---- 3. TABELA (a que já existia) ---- */}
+          {/* ---- 3. TABELA DETALHADA ---- */}
           {grupos.map((g) => (
             <section key={g.affiliateNome}>
               <div className="mb-3 flex items-baseline gap-2">
