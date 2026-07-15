@@ -14,7 +14,7 @@ async function cobertura(supabase: ReturnType<typeof getSupabaseAdmin>) {
       .order("nome"),
     supabase.from("affiliate_channels").select("affiliate_id"),
     supabase.from("traffic_daily").select("affiliate_id,leads,gasto"),
-    supabase.from("campaign_flows").select("affiliate_id"),
+    supabase.from("campaign_flows").select("affiliate_id,bot_name"),
   ]);
 
   type A = {
@@ -27,9 +27,18 @@ async function cobertura(supabase: ReturnType<typeof getSupabaseAdmin>) {
   const conta = (rows: { affiliate_id: number }[] | null, id: number) =>
     (rows ?? []).filter((r) => r.affiliate_id === id).length;
 
+  const campRows =
+    (camps.data as { affiliate_id: number; bot_name: string | null }[] | null) ?? [];
+
   return ((affs.data as A[] | null) ?? []).map((a) => {
     const t = ((traffic.data as { affiliate_id: number; leads: number | null; gasto: string | number | null }[] | null) ?? [])
       .filter((r) => r.affiliate_id === a.id);
+    // quantas campanhas por bot — é isso que revela o bot de suporte entrando
+    const porBot: Record<string, number> = {};
+    for (const r of campRows.filter((r) => r.affiliate_id === a.id)) {
+      const b = r.bot_name ?? "(sem bot)";
+      porBot[b] = (porBot[b] ?? 0) + 1;
+    }
     return {
       afiliado: a.nome,
       ativo: a.ativo ?? true,
@@ -37,6 +46,7 @@ async function cobertura(supabase: ReturnType<typeof getSupabaseAdmin>) {
       sendpulse_conectado: Boolean(a.sendpulse_client_id),
       planilha_conectada: Boolean(a.traffic_sheet_url),
       campanhas: conta(camps.data as { affiliate_id: number }[] | null, a.id),
+      campanhas_por_bot: porBot,
       trafego_dias: t.length,
       trafego_leads: t.reduce((s, r) => s + (r.leads ?? 0), 0),
       trafego_gasto: Math.round(t.reduce((s, r) => s + Number(r.gasto ?? 0), 0) * 100) / 100,
