@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAffiliates } from "@/lib/affiliates";
-import { tgChannels, tgDaily, resolveYear, tgKey } from "@/lib/trackgram";
+import { tgChannels, tgDaily, tgKey } from "@/lib/trackgram";
 import { fetchSheetGasto } from "@/lib/traffic";
 
 export const runtime = "nodejs";
@@ -54,9 +54,7 @@ async function run() {
       >();
       if (tgIds.length) {
         for (const d of await tgDaily(from, to, tgIds)) {
-          const iso = resolveYear(d.date, from, to);
-          if (!iso) continue;
-          porDia.set(iso, {
+          porDia.set(d.date, {
             leads: d.entries ?? 0,
             page_views: d.page_views ?? 0,
             clicks: d.clicks ?? 0,

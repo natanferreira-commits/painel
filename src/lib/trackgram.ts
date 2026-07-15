@@ -38,9 +38,11 @@ export async function tgChannels(): Promise<TgChannel[]> {
 }
 
 // ---- Métricas diárias (agregadas nos canais pedidos) ----
-// Atenção: a resposta traz "date" como "DD/MM" (sem ano) — o ano vem da janela.
+// A API devolve "date" como "DD/MM" (sem ano) e dá 500 em janela longa
+// (testado: 90 dias OK, 180 dias quebra em canal de volume alto). Então a
+// gente quebra em pedaços e resolve o ano DENTRO de cada pedaço.
 export type TgDailyRow = {
-  date: string;
+  date: string; // ISO YYYY-MM-DD (já resolvido)
   page_views: number;
   clicks: number;
   entries: number;
@@ -49,16 +51,45 @@ export type TgDailyRow = {
   redeposits: number;
 };
 
+type TgDailyRaw = Omit<TgDailyRow, "date"> & { date: string };
+
+const MAX_DIAS_POR_CHAMADA = 90;
+
+function chunkRanges(from: string, to: string, maxDays: number): [string, string][] {
+  const out: [string, string][] = [];
+  let start = from;
+  while (start <= to) {
+    const s = new Date(`${start}T00:00:00Z`).getTime();
+    const tentativo = new Date(s + (maxDays - 1) * 86_400_000).toISOString().slice(0, 10);
+    const end = tentativo > to ? to : tentativo;
+    out.push([start, end]);
+    start = new Date(new Date(`${end}T00:00:00Z`).getTime() + 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+  }
+  return out;
+}
+
 export async function tgDaily(
   from: string,
   to: string,
   channelIds: number[],
 ): Promise<TgDailyRow[]> {
-  const qs = new URLSearchParams({ from, to });
-  if (channelIds.length) qs.set("channel_ids", channelIds.join(","));
-  const r = await tgGet(`/v1/metrics/daily?${qs.toString()}`);
-  if (r.status !== 200) throw new Error(`TrackGram /v1/metrics/daily: HTTP ${r.status}`);
-  return (r.body as { daily?: TgDailyRow[] } | null)?.daily ?? [];
+  const out: TgDailyRow[] = [];
+  for (const [f, t] of chunkRanges(from, to, MAX_DIAS_POR_CHAMADA)) {
+    const qs = new URLSearchParams({ from: f, to: t });
+    if (channelIds.length) qs.set("channel_ids", channelIds.join(","));
+    const r = await tgGet(`/v1/metrics/daily?${qs.toString()}`);
+    if (r.status !== 200) {
+      throw new Error(`TrackGram /v1/metrics/daily (${f}..${t}): HTTP ${r.status}`);
+    }
+    for (const d of (r.body as { daily?: TgDailyRaw[] } | null)?.daily ?? []) {
+      const iso = resolveYear(d.date, f, t);
+      if (!iso) continue;
+      out.push({ ...d, date: iso });
+    }
+  }
+  return out;
 }
 
 // ---- Métricas agregadas do período (tem os VALORES: ftd_amount, deposit_amount) ----
