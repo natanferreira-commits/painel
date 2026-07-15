@@ -10,6 +10,7 @@ import { SyncButton } from "@/components/SyncButton";
 import { CampaignFilters } from "@/components/CampaignFilters";
 import { CampaignLineChart, type Serie, type Ponto } from "@/components/CampaignLineChart";
 
+
 export const dynamic = "force-dynamic";
 
 export const metadata = {
@@ -107,15 +108,30 @@ export default async function CampanhasPage({ searchParams }: { searchParams: SP
   })();
 
   // ---- série pro gráfico de linhas: data da campanha x quem entrou ----
+  // Cada ponto é o dia; carrega os dados de cada campanha daquele dia (o
+  // tooltip mostra entradas e engajamento campanha a campanha).
   const series: Serie[] = (() => {
     const porAf = new Map<string, Map<string, Ponto>>();
     for (const f of escopo) {
       if (!f.flowCreatedAt || !f.entered || f.entered <= 0) continue;
       const dia = f.flowCreatedAt.slice(0, 10);
       const m = porAf.get(f.affiliateNome) ?? new Map<string, Ponto>();
-      const p = m.get(dia) ?? { date: dia, entered: 0, campanhas: [] };
+      const p = m.get(dia) ?? {
+        date: dia,
+        entered: 0,
+        reached: 0,
+        conversao: null,
+        campanhas: [],
+      };
       p.entered += f.entered;
-      p.campanhas.push(`${f.name}: ${fmt(f.entered)}`);
+      p.reached += f.reached ?? 0;
+      p.campanhas.push({
+        nome: f.name,
+        entered: f.entered,
+        reached: f.reached,
+        conversao: f.conversao,
+      });
+      p.conversao = p.entered > 0 ? Math.round((p.reached / p.entered) * 1000) / 10 : null;
       m.set(dia, p);
       porAf.set(f.affiliateNome, m);
     }
@@ -210,8 +226,8 @@ export default async function CampanhasPage({ searchParams }: { searchParams: SP
                 Entradas por campanha, ao longo do tempo
               </div>
               <p className="mb-4 text-[12.5px] text-muted">
-                Cada ponto é uma campanha (na data em que foi criada) e quantas pessoas entraram
-                nela. Passe o mouse pra ver quais campanhas.
+                Cada ponto é uma campanha, na data em que foi criada. Passe o mouse pra ver as
+                entradas e o engajamento dela.
               </p>
 
               {series.length > 1 && (
