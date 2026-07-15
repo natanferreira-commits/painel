@@ -68,7 +68,9 @@ export type TgDailyRow = {
 
 type TgDailyRaw = Omit<TgDailyRow, "date"> & { date: string };
 
-const MAX_DIAS_POR_CHAMADA = 90;
+// Testado canal a canal: 90d e 45d dão 500 nos canais de volume alto
+// (Mateus/ch60 só aguenta 30). 30 dias passa em todos.
+const MAX_DIAS_POR_CHAMADA = 30;
 
 function chunkRanges(from: string, to: string, maxDays: number): [string, string][] {
   const out: [string, string][] = [];
