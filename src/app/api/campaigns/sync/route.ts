@@ -49,6 +49,9 @@ async function run() {
           category: f.category,
           status: f.status,
           flow_created_at: f.createdAt,
+          // data real da campanha (do nome). Se o nome não tiver data, cai no
+          // created_at só pra não ficar sem nada.
+          campaign_date: f.campaignDate ?? f.createdAt.slice(0, 10),
           captured_at: now,
         }));
         const { error } = await supabase.from("campaign_flows").insert(rows);

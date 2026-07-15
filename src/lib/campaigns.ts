@@ -22,7 +22,9 @@ export type CampaignFlow = {
   conversao: number | null; // % de quem entrou e chegou no fim (taxa de conversão)
   category: CampaignCategory;
   status: number | null;
-  flowCreatedAt: string | null; // quando a campanha foi criada
+  campaignDate: string | null; // data REAL da campanha (lida do nome)
+  flowCreatedAt: string | null; // quando o fluxo foi montado/copiado
+  fluxos: string[]; // nomes dos fluxos por trás (>1 = dividem a mesma tag)
   capturedAt: string;
 };
 
@@ -38,6 +40,7 @@ type Row = {
   reached: number | null;
   category: string | null;
   status: number | null;
+  campaign_date: string | null;
   flow_created_at: string | null;
   captured_at: string;
   affiliates: { nome: string } | null;
@@ -60,19 +63,20 @@ export async function getCampaignFlows(opts?: {
   let q = supabase
     .from("campaign_flows")
     .select(
-      "affiliate_id,bot_name,flow_id,name,folder_id,entry_tag,entered,end_tag,reached,category,status,flow_created_at,captured_at,affiliates(nome)",
+      "affiliate_id,bot_name,flow_id,name,folder_id,entry_tag,entered,end_tag,reached,category,status,campaign_date,flow_created_at,captured_at,affiliates(nome)",
     )
     .order("entered", { ascending: false, nullsFirst: false });
 
   if (opts?.affiliateIds?.length) q = q.in("affiliate_id", opts.affiliateIds);
   if (opts?.category) q = q.eq("category", opts.category);
+  // Filtra pela data REAL da campanha (do nome), não pelo created_at do fluxo.
   if (opts?.from && opts?.to) {
-    q = q
-      .gte("flow_created_at", `${opts.from}T00:00:00`)
-      .lte("flow_created_at", `${opts.to}T23:59:59.999`);
+    q = q.gte("campaign_date", opts.from).lte("campaign_date", opts.to);
   } else if (opts?.sinceDays) {
-    const since = new Date(Date.now() - opts.sinceDays * 86_400_000).toISOString();
-    q = q.gte("flow_created_at", since);
+    const since = new Date(Date.now() - opts.sinceDays * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    q = q.gte("campaign_date", since);
   }
   if (!opts?.todos) {
     if (!opts?.category) q = q.in("category", ["aposta_segura", "boas_vindas"]);
@@ -81,30 +85,63 @@ export async function getCampaignFlows(opts?: {
 
   const { data, error } = await q;
   if (error) throw new Error(error.message);
+  const rows = (data as unknown as Row[] | null) ?? [];
 
-  return ((data as unknown as Row[] | null) ?? []).map((r) => {
-    const entered = r.entered;
-    const reached = r.reached;
+  // O número de "entrou" é a contagem da TAG de entrada. Quando dois fluxos
+  // usam a mesma tag (fluxo duplicado, ou reaproveitaram a tag), os dois
+  // mostram o MESMO número — somar seria contar a mesma gente duas vezes.
+  // Então a campanha é identificada pela TAG, não pelo fluxo.
+  const grupos = new Map<string, Row[]>();
+  for (const r of rows) {
+    const tag = r.entry_tag?.toLowerCase().trim();
+    const chave = `${r.affiliate_id}::${tag || `__sem_tag_${r.flow_id}`}`;
+    const arr = grupos.get(chave) ?? [];
+    arr.push(r);
+    grupos.set(chave, arr);
+  }
+
+  // Nome canônico: evita o que parece cópia — "(1)", "(old)", "- 2" — e,
+  // empatando, o mais curto.
+  const ehCopia = (n: string) => /\(\d+\)|\(old\)|-\s*\d+\s*$/i.test(n);
+  const escolheNome = (g: Row[]) =>
+    [...g].sort((a, b) => {
+      const ca = ehCopia(a.name) ? 1 : 0;
+      const cb = ehCopia(b.name) ? 1 : 0;
+      if (ca !== cb) return ca - cb;
+      return a.name.length - b.name.length;
+    })[0];
+
+  return [...grupos.values()].map((g) => {
+    const p = escolheNome(g);
+    // todos do grupo carregam a mesma contagem — pega uma vez, não soma
+    const entered = Math.max(...g.map((r) => r.entered ?? 0)) || null;
+    const reached = g.some((r) => r.reached !== null)
+      ? Math.max(...g.map((r) => r.reached ?? 0))
+      : null;
     const conversao =
       entered && entered > 0 && reached !== null
         ? Math.round((reached / entered) * 1000) / 10
         : null;
+    const datas = g.map((r) => r.campaign_date).filter((d): d is string => !!d).sort();
+
     return {
-      affiliateId: r.affiliate_id,
-      affiliateNome: r.affiliates?.nome ?? String(r.affiliate_id),
-      botName: r.bot_name,
-      flowId: r.flow_id,
-      name: r.name,
-      folderId: r.folder_id,
-      entryTag: r.entry_tag,
+      affiliateId: p.affiliate_id,
+      affiliateNome: p.affiliates?.nome ?? String(p.affiliate_id),
+      botName: p.bot_name,
+      flowId: p.flow_id,
+      name: p.name,
+      folderId: p.folder_id,
+      entryTag: p.entry_tag,
       entered,
-      endTag: r.end_tag,
+      endTag: p.end_tag,
       reached,
       conversao,
-      category: (r.category as CampaignCategory) ?? "outro",
-      status: r.status,
-      flowCreatedAt: r.flow_created_at,
-      capturedAt: r.captured_at,
+      category: (p.category as CampaignCategory) ?? "outro",
+      status: p.status,
+      campaignDate: datas[0] ?? p.campaign_date,
+      flowCreatedAt: p.flow_created_at,
+      fluxos: [...new Set(g.map((r) => r.name))].sort(),
+      capturedAt: p.captured_at,
     };
   });
 }

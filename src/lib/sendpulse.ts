@@ -73,7 +73,39 @@ export type SpFlow = {
   endTag: string | null; // tag(s) que marcam o fim do funil
   reached: number | null; // pessoas que chegaram no fim
   category: CampaignCategory;
+  campaignDate: string | null; // data REAL da campanha (lida do nome)
 };
+
+// A data REAL da campanha está no NOME ("APOSTA SEGURA 11/07"), não no
+// created_at (que é quando o fluxo foi montado/copiado — eles montam com
+// antecedência e duplicam fluxos). O ano não vem no nome, então escolhemos o
+// ano que deixa a data mais perto do created_at (resolve virada de ano).
+export function campaignDateFromName(name: string, createdAt: string): string | null {
+  const m = name.match(/(\d{2})\/(\d{2})/);
+  if (!m) return null;
+  const [, dd, mm] = m;
+  const d = Number(dd);
+  const mo = Number(mm);
+  if (d < 1 || d > 31 || mo < 1 || mo > 12) return null;
+
+  const alvo = new Date(createdAt).getTime();
+  if (isNaN(alvo)) return null;
+  const ano = Number(createdAt.slice(0, 4));
+
+  let melhor: string | null = null;
+  let menorDist = Infinity;
+  for (const a of [ano - 1, ano, ano + 1]) {
+    const iso = `${a}-${mm}-${dd}`;
+    const t = new Date(`${iso}T12:00:00Z`).getTime();
+    if (isNaN(t)) continue;
+    const dist = Math.abs(t - alvo);
+    if (dist < menorDist) {
+      menorDist = dist;
+      melhor = iso;
+    }
+  }
+  return melhor;
+}
 
 // Categoria pelo nome do fluxo (regra do time).
 export function categoryOf(name: string): CampaignCategory {
@@ -205,6 +237,7 @@ export async function getSendpulseFlows(creds: SpCreds): Promise<SpFlow[]> {
         endTag,
         reached,
         category: categoryOf(f.name),
+        campaignDate: campaignDateFromName(f.name, f.created_at),
       });
     }
   }

@@ -113,8 +113,8 @@ export default async function CampanhasPage({ searchParams }: { searchParams: SP
   const series: Serie[] = (() => {
     const porAf = new Map<string, Map<string, Ponto>>();
     for (const f of escopo) {
-      if (!f.flowCreatedAt || !f.entered || f.entered <= 0) continue;
-      const dia = f.flowCreatedAt.slice(0, 10);
+      if (!f.campaignDate || !f.entered || f.entered <= 0) continue;
+      const dia = f.campaignDate.slice(0, 10);
       const m = porAf.get(f.affiliateNome) ?? new Map<string, Ponto>();
       const p = m.get(dia) ?? {
         date: dia,
@@ -172,7 +172,8 @@ export default async function CampanhasPage({ searchParams }: { searchParams: SP
     error?.toLowerCase().includes("campaign_flows") ||
     error?.toLowerCase().includes("category") ||
     error?.toLowerCase().includes("reached") ||
-    error?.toLowerCase().includes("flow_created_at");
+    error?.toLowerCase().includes("flow_created_at") ||
+    error?.toLowerCase().includes("campaign_date");
 
   return (
     <main className="mx-auto max-w-3xl px-5 py-10 md:px-8">
@@ -318,7 +319,7 @@ export default async function CampanhasPage({ searchParams }: { searchParams: SP
 
                     <div className="grid grid-cols-[1fr_52px_60px_60px_54px] gap-2 border-b border-linesoft px-4 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-faint">
                       <span>Campanha</span>
-                      <span className="text-right">Criada</span>
+                      <span className="text-right">Data</span>
                       <span className="text-right">Entrou</span>
                       <span className="text-right">Chegou</span>
                       <span className="text-right">Conv.</span>
@@ -330,12 +331,24 @@ export default async function CampanhasPage({ searchParams }: { searchParams: SP
                           key={f.flowId}
                           className="grid grid-cols-[1fr_52px_60px_60px_54px] items-center gap-2 px-4 py-3"
                         >
-                          <span className="min-w-0 truncate text-[13.5px]" title={f.name}>
-                            {f.name}
+                          <span
+                            className="flex min-w-0 items-center gap-1.5"
+                            title={
+                              f.fluxos.length > 1
+                                ? `${f.fluxos.length} fluxos dividem a mesma tag (contam uma vez):\n${f.fluxos.join("\n")}`
+                                : f.name
+                            }
+                          >
+                            <span className="truncate text-[13.5px]">{f.name}</span>
+                            {f.fluxos.length > 1 && (
+                              <span className="shrink-0 rounded-full border border-line px-1.5 text-[10px] text-faint">
+                                {f.fluxos.length} fluxos
+                              </span>
+                            )}
                           </span>
                           <span className="text-right text-[11.5px] tabular-nums text-faint">
-                            {f.flowCreatedAt
-                              ? f.flowCreatedAt.slice(0, 10).split("-").reverse().slice(0, 2).join("/")
+                            {f.campaignDate
+                              ? f.campaignDate.slice(0, 10).split("-").reverse().slice(0, 2).join("/")
                               : "—"}
                           </span>
                           <span className="text-right text-[13px] tabular-nums">
