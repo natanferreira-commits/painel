@@ -145,10 +145,11 @@ export type ContentSummary = {
 };
 
 // channelIds undefined = todos os canais. [] = nenhum (afiliado sem canal).
-// Agrega no banco (RPC) — sem teto de linhas, correto em qualquer escala.
+// Intervalo explícito (from..to em ISO) — agrega no banco, sem teto de linhas.
 export async function getContentSummary(opts: {
   channelIds?: string[];
-  sinceDays: number;
+  from: string;
+  to: string;
 }): Promise<ContentSummary> {
   if (opts.channelIds && opts.channelIds.length === 0) {
     return { total: 0, perDay: 0, peakHour: null, byTipo: [] };
@@ -157,11 +158,12 @@ export async function getContentSummary(opts: {
   const supabase = getSupabaseAdmin();
   const params = {
     p_channel_ids: opts.channelIds ?? null,
-    p_since_days: opts.sinceDays,
+    p_from: opts.from,
+    p_to: opts.to,
   };
   const [tipoRes, hourRes] = await Promise.all([
-    supabase.rpc("content_tipo_counts", params),
-    supabase.rpc("content_hour_counts", params),
+    supabase.rpc("content_tipo_counts_range", params),
+    supabase.rpc("content_hour_counts_range", params),
   ]);
   if (tipoRes.error) throw new Error(tipoRes.error.message);
   if (hourRes.error) throw new Error(hourRes.error.message);
@@ -186,9 +188,16 @@ export async function getContentSummary(opts: {
     }
   }
 
+  const dias =
+    Math.round(
+      (new Date(`${opts.to}T00:00:00Z`).getTime() -
+        new Date(`${opts.from}T00:00:00Z`).getTime()) /
+        86_400_000,
+    ) + 1;
+
   return {
     total,
-    perDay: opts.sinceDays > 0 ? Math.round(total / opts.sinceDays) : total,
+    perDay: dias > 0 ? Math.round(total / dias) : total,
     peakHour,
     byTipo,
   };

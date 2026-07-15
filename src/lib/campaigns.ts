@@ -52,6 +52,8 @@ export async function getCampaignFlows(opts?: {
   affiliateIds?: number[];
   category?: CampaignCategory;
   sinceDays?: number;
+  from?: string; // intervalo pela DATA DA CAMPANHA (tem precedência sobre sinceDays)
+  to?: string;
   todos?: boolean;
 }): Promise<CampaignFlow[]> {
   const supabase = getSupabaseAdmin();
@@ -64,7 +66,11 @@ export async function getCampaignFlows(opts?: {
 
   if (opts?.affiliateIds?.length) q = q.in("affiliate_id", opts.affiliateIds);
   if (opts?.category) q = q.eq("category", opts.category);
-  if (opts?.sinceDays) {
+  if (opts?.from && opts?.to) {
+    q = q
+      .gte("flow_created_at", `${opts.from}T00:00:00`)
+      .lte("flow_created_at", `${opts.to}T23:59:59.999`);
+  } else if (opts?.sinceDays) {
     const since = new Date(Date.now() - opts.sinceDays * 86_400_000).toISOString();
     q = q.gte("flow_created_at", since);
   }

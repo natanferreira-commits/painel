@@ -155,11 +155,23 @@ function distRows(summary: ContentSummary) {
   return rows;
 }
 
-const MAX_DIAS = 400; // "desde o início" — cobre todo o histórico
-
 function isoDaysAgo(n: number): string {
   return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
 }
+function addDays(iso: string, n: number): string {
+  return new Date(new Date(`${iso}T00:00:00Z`).getTime() + n * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+}
+function diffDays(a: string, b: string): number {
+  return Math.round(
+    (new Date(`${b}T00:00:00Z`).getTime() - new Date(`${a}T00:00:00Z`).getTime()) /
+      86_400_000,
+  );
+}
+const isISO = (v: unknown): v is string =>
+  typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+const fmtBR = (iso: string) => iso.split("-").reverse().join("/");
 
 // variação % vs. período anterior. null = sem base de comparação.
 function pctDelta(cur: number, prev: number): number | null {
@@ -170,20 +182,16 @@ function pctDelta(cur: number, prev: number): number | null {
 export default async function VisaoGeral({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
   const afId = typeof sp.af === "string" ? sp.af : "";
-  const isMax = sp.periodo === "max";
-  const sinceDays = isMax
-    ? MAX_DIAS
-    : sp.periodo === "7"
-      ? 7
-      : sp.periodo === "90"
-        ? 90
-        : 30;
 
-  // janela atual e a anterior de mesmo tamanho (pra comparar)
-  const to = isoDaysAgo(0);
-  const from = isoDaysAgo(sinceDays - 1);
-  const prevTo = isoDaysAgo(sinceDays);
-  const prevFrom = isoDaysAgo(sinceDays * 2 - 1);
+  // intervalo escolhido no calendário (padrão: últimos 30 dias)
+  const de = isISO(sp.de) ? sp.de : isoDaysAgo(29);
+  const ateBruto = isISO(sp.ate) ? sp.ate : isoDaysAgo(0);
+  const ate = ateBruto < de ? de : ateBruto;
+  const dias = diffDays(de, ate) + 1;
+
+  // período anterior de mesmo tamanho, imediatamente antes (pra comparar)
+  const prevTo = addDays(de, -1);
+  const prevFrom = addDays(prevTo, -(dias - 1));
 
   let affiliates: AffiliateOption[] = [];
   let summary: ContentSummary = { total: 0, perDay: 0, peakHour: null, byTipo: [] };
@@ -195,7 +203,7 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
     selected = afId ? affiliates.find((a) => String(a.id) === afId) ?? null : null;
     const channelIds = selected ? selected.channelIds : undefined;
     if (selected && selected.channelIds.length === 0) semCanal = true;
-    summary = await getContentSummary({ channelIds, sinceDays });
+    summary = await getContentSummary({ channelIds, from: de, to: ate });
   } catch {
     // banco indisponível / migração pendente: segue com valores vazios
   }
@@ -204,8 +212,8 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
   try {
     campaigns = await getCampaignFlows({
       affiliateIds: selected ? [selected.id] : undefined,
-      // "desde o início" não filtra por data de campanha
-      sinceDays: isMax ? undefined : sinceDays,
+      from: de,
+      to: ate,
     });
   } catch {
     campaigns = [];
@@ -230,31 +238,27 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
   let trafficPrev: TrafficSummary = vazio;
   try {
     const affiliateIds = selected ? [selected.id] : undefined;
-    traffic = await getTrafficSummary({ affiliateIds, from, to });
-    if (!isMax) {
-      trafficPrev = await getTrafficSummary({
-        affiliateIds,
-        from: prevFrom,
-        to: prevTo,
-      });
-    }
+    traffic = await getTrafficSummary({ affiliateIds, from: de, to: ate });
+    trafficPrev = await getTrafficSummary({
+      affiliateIds,
+      from: prevFrom,
+      to: prevTo,
+    });
   } catch {
     // migração pendente / sem dado ainda
   }
 
-  const deltaGasto = isMax ? null : pctDelta(traffic.gasto, trafficPrev.gasto);
-  const deltaLeads = isMax ? null : pctDelta(traffic.leads, trafficPrev.leads);
+  const deltaGasto = pctDelta(traffic.gasto, trafficPrev.gasto);
+  const deltaLeads = pctDelta(traffic.leads, trafficPrev.leads);
   const deltaCustoLead =
-    isMax || traffic.custoLead === null || trafficPrev.custoLead === null
+    traffic.custoLead === null || trafficPrev.custoLead === null
       ? null
       : pctDelta(traffic.custoLead, trafficPrev.custoLead);
 
   const rows = distRows(summary);
   const escopoLabel = selected ? selected.nome : "todos os afiliados";
-  const periodoLabel = isMax ? "desde o início" : `últimos ${sinceDays} dias`;
-  const comparativoLabel = isMax
-    ? "todo o histórico"
-    : `vs. ${sinceDays} dias anteriores`;
+  const periodoLabel = `${fmtBR(de)} a ${fmtBR(ate)}`;
+  const comparativoLabel = `vs. ${dias} ${dias === 1 ? "dia anterior" : "dias anteriores"}`;
   const brl = (n: number) =>
     n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
@@ -267,7 +271,11 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
             Operação Arena · {escopoLabel} · {periodoLabel}
           </p>
         </div>
-        <DashboardFilters affiliates={affiliates.map((a) => ({ id: a.id, nome: a.nome }))} />
+        <DashboardFilters
+          affiliates={affiliates.map((a) => ({ id: a.id, nome: a.nome }))}
+          de={de}
+          ate={ate}
+        />
       </header>
 
       <div className="flex flex-col gap-4 px-6 pb-10 pt-[22px]">
@@ -311,7 +319,7 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
         {/* ROW A */}
         <div className="grid gap-4 lg:grid-cols-3">
           <section className="flex flex-col rounded-xl border border-line bg-panel lg:col-span-2">
-            <CardHead d="M21 6H3M18 12H6M14 18h-4" title="Campanhas" cap={`${isMax ? "Todas as campanhas" : `Criadas nos ${periodoLabel}`} · ${escopoLabel}`} href="/campanhas" />
+            <CardHead d="M21 6H3M18 12H6M14 18h-4" title="Campanhas" cap={`Criadas em ${periodoLabel} · ${escopoLabel}`} href="/campanhas" />
             <div className="p-[18px]">
               {topCampaigns.length === 0 ? (
                 <div className="flex min-h-[200px] flex-col items-center justify-center rounded-lg px-6 py-6 text-center">
@@ -471,14 +479,12 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
                       <span className="text-[19px] font-bold tracking-tight tabular-nums">{summary.total.toLocaleString("pt-BR")}</span>
                       <span className="text-[11px] text-muted">posts no período</span>
                     </div>
-                    {!isMax && (
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[19px] font-bold tracking-tight tabular-nums">
-                          ~{summary.perDay}<span className="text-[13px] font-normal text-muted">/dia</span>
-                        </span>
-                        <span className="text-[11px] text-muted">frequência média</span>
-                      </div>
-                    )}
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[19px] font-bold tracking-tight tabular-nums">
+                        ~{summary.perDay}<span className="text-[13px] font-normal text-muted">/dia</span>
+                      </span>
+                      <span className="text-[11px] text-muted">frequência média</span>
+                    </div>
                     <div className="flex flex-col gap-0.5">
                       <span className="text-[19px] font-bold tracking-tight tabular-nums">
                         {summary.peakHour !== null ? `${String(summary.peakHour).padStart(2, "0")}h` : "—"}
