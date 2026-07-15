@@ -1,4 +1,9 @@
-import { getCampaignFlows, getLastCampaignSync, type CampaignFlow } from "@/lib/campaigns";
+import {
+  getCampaignFlows,
+  getLastCampaignSync,
+  CATEGORY_LABEL,
+  type CampaignFlow,
+} from "@/lib/campaigns";
 import { SyncButton } from "@/components/SyncButton";
 
 export const dynamic = "force-dynamic";
@@ -6,6 +11,15 @@ export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Campanhas · ToolBox Arena",
 };
+
+const CAT_ORDER = ["aposta_segura", "boas_vindas"] as const;
+
+function ctrColor(ctr: number | null) {
+  if (ctr === null) return "text-faint";
+  if (ctr >= 10) return "text-ok";
+  if (ctr >= 5) return "text-warn";
+  return "text-crit";
+}
 
 function group(flows: CampaignFlow[]) {
   const byAff = new Map<string, CampaignFlow[]>();
@@ -16,22 +30,13 @@ function group(flows: CampaignFlow[]) {
   }
   return [...byAff.entries()]
     .map(([affiliateNome, list]) => {
-      const byFolder = new Map<string, CampaignFlow[]>();
-      for (const f of list) {
-        const key = f.folderId ?? "__none__";
-        const arr = byFolder.get(key) ?? [];
-        arr.push(f);
-        byFolder.set(key, arr);
-      }
-      const folders = [...byFolder.entries()]
-        .map(([key, arr], i) => ({
-          key,
-          label: key === "__none__" ? "Sem pasta" : `Pasta ${i + 1}`,
-          flows: arr.sort((a, b) => (b.entered ?? -1) - (a.entered ?? -1)),
-        }))
-        .sort((a, b) => b.flows.length - a.flows.length);
+      const cats = CAT_ORDER.map((c) => ({
+        key: c,
+        label: CATEGORY_LABEL[c],
+        flows: list.filter((f) => f.category === c),
+      })).filter((c) => c.flows.length > 0);
       const totalEntered = list.reduce((s, f) => s + (f.entered ?? 0), 0);
-      return { affiliateNome, total: list.length, totalEntered, folders };
+      return { affiliateNome, total: list.length, totalEntered, cats };
     })
     .sort((a, b) => b.totalEntered - a.totalEntered);
 }
@@ -48,7 +53,10 @@ export default async function CampanhasPage() {
   }
 
   const groups = group(flows);
-  const missingTable = error?.toLowerCase().includes("campaign_flows");
+  const faltaMigrar =
+    error?.toLowerCase().includes("campaign_flows") ||
+    error?.toLowerCase().includes("category") ||
+    error?.toLowerCase().includes("reached");
 
   return (
     <main className="mx-auto max-w-3xl px-5 py-10 md:px-8">
@@ -56,11 +64,14 @@ export default async function CampanhasPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Campanhas</h1>
           <p className="mt-1 text-sm text-muted">
-            Fluxos de chatbot do SendPulse por afiliado — pessoas que iniciaram cada um
+            Aposta Segura e Boas vindas · quem entrou, quem chegou no fim e o CTR
             {lastSync && (
               <>
                 {" · "}sincronizado{" "}
-                {new Date(lastSync).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                {new Date(lastSync).toLocaleString("pt-BR", {
+                  dateStyle: "short",
+                  timeStyle: "short",
+                })}
               </>
             )}
           </p>
@@ -68,11 +79,11 @@ export default async function CampanhasPage() {
         <SyncButton />
       </header>
 
-      {missingTable ? (
+      {faltaMigrar ? (
         <div className="rounded-xl border border-warn/40 bg-warn/10 p-4 text-sm">
-          <p className="font-medium text-warn">Tabela de campanhas não existe ainda.</p>
+          <p className="font-medium text-warn">Falta rodar a migração.</p>
           <p className="mt-1 text-muted">
-            Rode a migração <code>supabase/migration_campaigns.sql</code> no Supabase.
+            Rode <code>supabase/migration_campaign_ctr.sql</code> no Supabase e sincronize de novo.
           </p>
         </div>
       ) : error ? (
@@ -82,51 +93,60 @@ export default async function CampanhasPage() {
       ) : flows.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-line bg-panel/40 p-12 text-center">
           <div className="text-3xl">🔄</div>
-          <div className="mt-4 font-medium">Nada sincronizado ainda</div>
+          <div className="mt-4 font-medium">Nenhuma campanha com gente dentro</div>
           <p className="mx-auto mt-1 max-w-md text-sm text-muted">
-            Cadastre a credencial do SendPulse de cada afiliado em <b>Afiliados</b> e clique em{" "}
-            <b>Sincronizar</b> aqui em cima.
+            Conecte o SendPulse dos afiliados em <b>Afiliados</b> e clique em <b>Sincronizar</b>.
+            Fluxos zerados e fora das categorias não aparecem aqui.
           </p>
         </div>
       ) : (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-7">
           {groups.map((g) => (
             <section key={g.affiliateNome}>
               <div className="mb-3 flex items-baseline gap-2">
                 <h2 className="text-[15px] font-semibold">{g.affiliateNome}</h2>
                 <span className="text-[12px] text-faint">
-                  {g.total} fluxos · {g.totalEntered.toLocaleString("pt-BR")} pessoas
+                  {g.total} campanhas · {g.totalEntered.toLocaleString("pt-BR")} pessoas
                 </span>
               </div>
+
               <div className="flex flex-col gap-4">
-                {g.folders.map((folder) => (
-                  <div key={folder.key} className="overflow-hidden rounded-2xl border border-line bg-panel">
+                {g.cats.map((cat) => (
+                  <div key={cat.key} className="overflow-hidden rounded-2xl border border-line bg-panel">
                     <div className="flex items-center gap-2 border-b border-linesoft px-4 py-2.5">
                       <span className="text-[12.5px] font-semibold uppercase tracking-wider text-faint">
-                        {folder.label}
+                        {cat.label}
                       </span>
-                      <span className="ml-auto text-[12px] text-faint">{folder.flows.length}</span>
+                      <span className="ml-auto text-[12px] text-faint">{cat.flows.length}</span>
                     </div>
+
+                    <div className="grid grid-cols-[1fr_64px_64px_58px] gap-2 border-b border-linesoft px-4 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-faint">
+                      <span>Campanha</span>
+                      <span className="text-right">Entrou</span>
+                      <span className="text-right">Chegou</span>
+                      <span className="text-right">CTR</span>
+                    </div>
+
                     <ul className="divide-y divide-linesoft">
-                      {folder.flows.map((f) => (
-                        <li key={f.flowId} className="flex items-center gap-3 px-4 py-3">
+                      {cat.flows.map((f) => (
+                        <li
+                          key={f.flowId}
+                          className="grid grid-cols-[1fr_64px_64px_58px] items-center gap-2 px-4 py-3"
+                        >
+                          <span className="min-w-0 truncate text-[13.5px]" title={f.name}>
+                            {f.name}
+                          </span>
+                          <span className="text-right text-[13px] tabular-nums">
+                            {(f.entered ?? 0).toLocaleString("pt-BR")}
+                          </span>
                           <span
-                            className={`h-[7px] w-[7px] shrink-0 rounded-full ${f.status === 1 ? "bg-ok" : "bg-faint"}`}
-                            title={f.status === 1 ? "ativo" : "inativo"}
-                          />
-                          <span className="min-w-0 flex-1 truncate text-[13.5px]">{f.name}</span>
-                          <span
-                            className="flex shrink-0 items-center gap-1 text-[13px] tabular-nums"
-                            title={f.entryTag ? `tag de entrada: ${f.entryTag}` : "sem tag de entrada"}
+                            className="text-right text-[13px] tabular-nums text-muted"
+                            title={f.endTag ? `fim: ${f.endTag}` : "sem tag de fim"}
                           >
-                            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-faint" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8" />
-                            </svg>
-                            {f.entered !== null ? (
-                              <b className="font-semibold text-ink">{f.entered.toLocaleString("pt-BR")}</b>
-                            ) : (
-                              <span className="text-faint">—</span>
-                            )}
+                            {f.reached !== null ? f.reached.toLocaleString("pt-BR") : "—"}
+                          </span>
+                          <span className={`text-right text-[13px] font-semibold tabular-nums ${ctrColor(f.ctr)}`}>
+                            {f.ctr !== null ? `${f.ctr}%` : "—"}
                           </span>
                         </li>
                       ))}
@@ -138,6 +158,12 @@ export default async function CampanhasPage() {
           ))}
         </div>
       )}
+
+      <p className="mt-6 text-[12px] text-faint">
+        CTR = chegou no fim ÷ entrou. O fim é a tag com &ldquo;atendimento&rdquo;; quando não
+        existe, soma as tags &ldquo;apostou confirmado&rdquo;. &ldquo;—&rdquo; = fluxo sem tag de
+        fim identificada.
+      </p>
     </main>
   );
 }

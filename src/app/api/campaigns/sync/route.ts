@@ -39,6 +39,9 @@ async function run() {
           folder_id: f.folderId,
           entry_tag: f.entryTag,
           entered: f.entered,
+          end_tag: f.endTag,
+          reached: f.reached,
+          category: f.category,
           status: f.status,
           captured_at: now,
         }));

@@ -155,15 +155,19 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
 
   let campaigns: CampaignFlow[] = [];
   try {
-    campaigns = await getCampaignFlows(selected ? [selected.id] : undefined);
+    campaigns = await getCampaignFlows({
+      affiliateIds: selected ? [selected.id] : undefined,
+    });
   } catch {
     campaigns = [];
   }
   const topCampaigns = campaigns
-    .filter((c) => c.entered !== null)
     .sort((a, b) => (b.entered ?? 0) - (a.entered ?? 0))
     .slice(0, 6);
   const totalEntered = campaigns.reduce((s, c) => s + (c.entered ?? 0), 0);
+  const totalReached = campaigns.reduce((s, c) => s + (c.reached ?? 0), 0);
+  const ctrGeral =
+    totalEntered > 0 ? Math.round((totalReached / totalEntered) * 1000) / 10 : null;
 
   const rows = distRows(summary);
   const escopoLabel = selected ? selected.nome : "todos os afiliados";
@@ -213,22 +217,37 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
                   <div className="mb-4 flex gap-6">
                     <div className="flex flex-col gap-0.5">
                       <span className="text-[19px] font-bold tabular-nums">{campaigns.length}</span>
-                      <span className="text-[11px] text-muted">fluxos</span>
+                      <span className="text-[11px] text-muted">campanhas</span>
                     </div>
                     <div className="flex flex-col gap-0.5">
                       <span className="text-[19px] font-bold tabular-nums">{totalEntered.toLocaleString("pt-BR")}</span>
-                      <span className="text-[11px] text-muted">pessoas (soma)</span>
+                      <span className="text-[11px] text-muted">entraram</span>
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[19px] font-bold tabular-nums">{totalReached.toLocaleString("pt-BR")}</span>
+                      <span className="text-[11px] text-muted">chegaram no fim</span>
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[19px] font-bold tabular-nums text-lime">
+                        {ctrGeral !== null ? `${ctrGeral}%` : "—"}
+                      </span>
+                      <span className="text-[11px] text-muted">CTR geral</span>
                     </div>
                   </div>
                   <div className="flex flex-col gap-2.5">
                     {topCampaigns.map((c) => (
                       <div key={c.flowId} className="flex items-center gap-3">
-                        <span className="min-w-0 flex-1 truncate text-[13px]">{c.name}</span>
+                        <span className="min-w-0 flex-1 truncate text-[13px]" title={c.name}>
+                          {c.name}
+                        </span>
                         {!selected && (
                           <span className="shrink-0 text-[11px] text-faint">{c.affiliateNome}</span>
                         )}
-                        <span className="shrink-0 text-[13px] font-semibold tabular-nums">
-                          {(c.entered ?? 0).toLocaleString("pt-BR")}
+                        <span className="shrink-0 text-[12.5px] tabular-nums text-muted">
+                          {(c.entered ?? 0).toLocaleString("pt-BR")} → {c.reached ?? "—"}
+                        </span>
+                        <span className="w-12 shrink-0 text-right text-[13px] font-semibold tabular-nums">
+                          {c.ctr !== null ? `${c.ctr}%` : "—"}
                         </span>
                       </div>
                     ))}

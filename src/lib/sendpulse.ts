@@ -58,6 +58,8 @@ export async function spGet(
 }
 
 // ---- Fluxos (campanhas) de chatbot ----
+export type CampaignCategory = "aposta_segura" | "boas_vindas" | "outro";
+
 export type SpFlow = {
   id: string;
   name: string;
@@ -68,7 +70,18 @@ export type SpFlow = {
   botName: string;
   entryTag: string | null;
   entered: number | null;
+  endTag: string | null; // tag(s) que marcam o fim do funil
+  reached: number | null; // pessoas que chegaram no fim
+  category: CampaignCategory;
 };
+
+// Categoria pelo nome do fluxo (regra do time).
+export function categoryOf(name: string): CampaignCategory {
+  const n = name.toLowerCase();
+  if (/(segura|garantida)/.test(n)) return "aposta_segura";
+  if (/(boas\s*-?\s*vindas|resgate|giro\s*premiado)/.test(n)) return "boas_vindas";
+  return "outro";
+}
 
 type BotRow = { id: string; name?: string; channel_data?: { name?: string } };
 type FlowRow = {
@@ -83,17 +96,54 @@ type Operator = { start_item?: boolean; properties?: { body?: string } };
 
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
 
-function entryTagOf(detailBody: unknown): string | null {
-  // resposta = { data: fluxo }, e os blocos ficam em fluxo.data.operators.
+// resposta = { data: fluxo }, e os blocos ficam em fluxo.data.operators.
+function operatorsOf(detailBody: unknown): Operator[] {
   const ops = (
     detailBody as { data?: { data?: { operators?: Operator[] } } } | null
   )?.data?.data?.operators;
-  if (!Array.isArray(ops)) return null;
+  return Array.isArray(ops) ? ops : [];
+}
+
+function entryTagOf(detailBody: unknown): string | null {
+  const ops = operatorsOf(detailBody);
+  if (ops.length === 0) return null;
   const start = ops.find((o) => o?.start_item) ?? ops[0];
   const body = start?.properties?.body;
   if (typeof body !== "string" || !body.includes("set_tags")) return null;
   const m = body.match(/<b>(.*?)<\/b>/i);
   return m ? m[1].trim() : null;
+}
+
+// Todas as tags atribuídas no fluxo (sem repetir).
+function allSetTags(detailBody: unknown): string[] {
+  const found: string[] = [];
+  for (const o of operatorsOf(detailBody)) {
+    const b = o?.properties?.body;
+    if (typeof b !== "string" || !b.includes("set_tags")) continue;
+    for (const m of b.matchAll(/<b>(.*?)<\/b>/gi)) found.push(m[1].trim());
+  }
+  // dedupe por nome normalizado (fluxo repete a mesma tag em ramos diferentes)
+  return [...new Map(found.map((t) => [norm(t), t])).values()];
+}
+
+// Fim do funil: tag com "atendimento"; se não houver, soma as "apostou confirmado".
+function endOf(
+  tagsInFlow: string[],
+  tagCount: Map<string, number>,
+): { endTag: string | null; reached: number | null } {
+  const pick = (re: RegExp) => tagsInFlow.filter((t) => re.test(t));
+  const sum = (ts: string[]) =>
+    ts.reduce((s, t) => s + (tagCount.get(norm(t)) ?? 0), 0);
+
+  const atendimento = pick(/atendimento/i);
+  if (atendimento.length) {
+    return { endTag: atendimento.join(" + "), reached: sum(atendimento) };
+  }
+  const confirmado = pick(/apostou[\s_-]*confirmado/i);
+  if (confirmado.length) {
+    return { endTag: confirmado.join(" + "), reached: sum(confirmado) };
+  }
+  return { endTag: null, reached: null };
 }
 
 async function pool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -129,10 +179,11 @@ export async function getSendpulseFlows(creds: SpCreds): Promise<SpFlow[]> {
       const detail = await spGet(`/telegram/flows/get?bot_id=${b.id}&flow_id=${f.id}`, creds);
       const entryTag = entryTagOf(detail.body);
       const entered = entryTag ? tagCount.get(norm(entryTag)) ?? null : null;
-      return { f, entryTag, entered };
+      const { endTag, reached } = endOf(allSetTags(detail.body), tagCount);
+      return { f, entryTag, entered, endTag, reached };
     });
 
-    for (const { f, entryTag, entered } of enriched) {
+    for (const { f, entryTag, entered, endTag, reached } of enriched) {
       out.push({
         id: f.id,
         name: f.name,
@@ -143,6 +194,9 @@ export async function getSendpulseFlows(creds: SpCreds): Promise<SpFlow[]> {
         botName,
         entryTag,
         entered,
+        endTag,
+        reached,
+        category: categoryOf(f.name),
       });
     }
   }
