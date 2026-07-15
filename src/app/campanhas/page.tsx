@@ -3,14 +3,23 @@ import {
   getLastCampaignSync,
   CATEGORY_LABEL,
   type CampaignFlow,
+  type CampaignCategory,
 } from "@/lib/campaigns";
+import { getAffiliateOptions, type AffiliateOption } from "@/lib/affiliates";
 import { SyncButton } from "@/components/SyncButton";
+import { CampaignFilters } from "@/components/CampaignFilters";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Campanhas · ToolBox Arena",
 };
+
+type SP = Promise<{ [k: string]: string | string[] | undefined }>;
+
+function str(v: string | string[] | undefined): string | undefined {
+  return typeof v === "string" && v ? v : undefined;
+}
 
 const CAT_ORDER = ["aposta_segura", "boas_vindas"] as const;
 
@@ -41,13 +50,32 @@ function group(flows: CampaignFlow[]) {
     .sort((a, b) => b.totalEntered - a.totalEntered);
 }
 
-export default async function CampanhasPage() {
+export default async function CampanhasPage({ searchParams }: { searchParams: SP }) {
+  const sp = await searchParams;
+  const afId = str(sp.af);
+  const catParam = str(sp.cat);
+  const periodo = str(sp.periodo) ?? "30";
+  const sinceDays = periodo === "tudo" ? undefined : Number(periodo) || 30;
+  const category =
+    catParam === "aposta_segura" || catParam === "boas_vindas"
+      ? (catParam as CampaignCategory)
+      : undefined;
+
   let flows: CampaignFlow[] = [];
   let lastSync: string | null = null;
+  let affiliates: AffiliateOption[] = [];
   let error: string | null = null;
 
   try {
-    [flows, lastSync] = await Promise.all([getCampaignFlows(), getLastCampaignSync()]);
+    [flows, lastSync, affiliates] = await Promise.all([
+      getCampaignFlows({
+        affiliateIds: afId ? [Number(afId)] : undefined,
+        category,
+        sinceDays,
+      }),
+      getLastCampaignSync(),
+      getAffiliateOptions().catch(() => [] as AffiliateOption[]),
+    ]);
   } catch (e) {
     error = e instanceof Error ? e.message : "erro desconhecido";
   }
@@ -56,7 +84,8 @@ export default async function CampanhasPage() {
   const faltaMigrar =
     error?.toLowerCase().includes("campaign_flows") ||
     error?.toLowerCase().includes("category") ||
-    error?.toLowerCase().includes("reached");
+    error?.toLowerCase().includes("reached") ||
+    error?.toLowerCase().includes("flow_created_at");
 
   return (
     <main className="mx-auto max-w-3xl px-5 py-10 md:px-8">
@@ -79,6 +108,8 @@ export default async function CampanhasPage() {
         <SyncButton />
       </header>
 
+      <CampaignFilters affiliates={affiliates.map((a) => ({ id: a.id, nome: a.nome }))} />
+
       {faltaMigrar ? (
         <div className="rounded-xl border border-warn/40 bg-warn/10 p-4 text-sm">
           <p className="font-medium text-warn">Falta rodar a migração.</p>
@@ -93,10 +124,11 @@ export default async function CampanhasPage() {
       ) : flows.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-line bg-panel/40 p-12 text-center">
           <div className="text-3xl">🔄</div>
-          <div className="mt-4 font-medium">Nenhuma campanha com gente dentro</div>
+          <div className="mt-4 font-medium">Nenhuma campanha nesse filtro</div>
           <p className="mx-auto mt-1 max-w-md text-sm text-muted">
-            Conecte o SendPulse dos afiliados em <b>Afiliados</b> e clique em <b>Sincronizar</b>.
-            Fluxos zerados e fora das categorias não aparecem aqui.
+            Tente <b>Todas as datas</b> no período. Se ainda assim não vier nada, conecte o
+            SendPulse dos afiliados em <b>Afiliados</b> e clique em <b>Sincronizar</b>. Fluxos
+            zerados e fora das categorias nunca aparecem aqui.
           </p>
         </div>
       ) : (
@@ -120,8 +152,9 @@ export default async function CampanhasPage() {
                       <span className="ml-auto text-[12px] text-faint">{cat.flows.length}</span>
                     </div>
 
-                    <div className="grid grid-cols-[1fr_64px_64px_58px] gap-2 border-b border-linesoft px-4 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-faint">
+                    <div className="grid grid-cols-[1fr_52px_60px_60px_54px] gap-2 border-b border-linesoft px-4 py-2 text-[10.5px] font-semibold uppercase tracking-wider text-faint">
                       <span>Campanha</span>
+                      <span className="text-right">Criada</span>
                       <span className="text-right">Entrou</span>
                       <span className="text-right">Chegou</span>
                       <span className="text-right">CTR</span>
@@ -131,10 +164,15 @@ export default async function CampanhasPage() {
                       {cat.flows.map((f) => (
                         <li
                           key={f.flowId}
-                          className="grid grid-cols-[1fr_64px_64px_58px] items-center gap-2 px-4 py-3"
+                          className="grid grid-cols-[1fr_52px_60px_60px_54px] items-center gap-2 px-4 py-3"
                         >
                           <span className="min-w-0 truncate text-[13.5px]" title={f.name}>
                             {f.name}
+                          </span>
+                          <span className="text-right text-[11.5px] tabular-nums text-faint">
+                            {f.flowCreatedAt
+                              ? f.flowCreatedAt.slice(0, 10).split("-").reverse().slice(0, 2).join("/")
+                              : "—"}
                           </span>
                           <span className="text-right text-[13px] tabular-nums">
                             {(f.entered ?? 0).toLocaleString("pt-BR")}

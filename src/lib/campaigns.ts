@@ -22,6 +22,7 @@ export type CampaignFlow = {
   ctr: number | null; // % de quem entrou e chegou no fim
   category: CampaignCategory;
   status: number | null;
+  flowCreatedAt: string | null; // quando a campanha foi criada
   capturedAt: string;
 };
 
@@ -37,27 +38,39 @@ type Row = {
   reached: number | null;
   category: string | null;
   status: number | null;
+  flow_created_at: string | null;
   captured_at: string;
   affiliates: { nome: string } | null;
 };
 
 // Lê o snapshot. Por padrão traz só o que interessa: categorias do time e
 // fluxos com gente dentro (zerado não importa).
+// sinceDays filtra pela DATA DA CAMPANHA (quando o fluxo foi criado) — a
+// contagem de cada tag é acumulada, então o período escolhe quais campanhas
+// entram, não fatia o número de cada uma.
 export async function getCampaignFlows(opts?: {
   affiliateIds?: number[];
+  category?: CampaignCategory;
+  sinceDays?: number;
   todos?: boolean;
 }): Promise<CampaignFlow[]> {
   const supabase = getSupabaseAdmin();
   let q = supabase
     .from("campaign_flows")
     .select(
-      "affiliate_id,bot_name,flow_id,name,folder_id,entry_tag,entered,end_tag,reached,category,status,captured_at,affiliates(nome)",
+      "affiliate_id,bot_name,flow_id,name,folder_id,entry_tag,entered,end_tag,reached,category,status,flow_created_at,captured_at,affiliates(nome)",
     )
     .order("entered", { ascending: false, nullsFirst: false });
 
   if (opts?.affiliateIds?.length) q = q.in("affiliate_id", opts.affiliateIds);
+  if (opts?.category) q = q.eq("category", opts.category);
+  if (opts?.sinceDays) {
+    const since = new Date(Date.now() - opts.sinceDays * 86_400_000).toISOString();
+    q = q.gte("flow_created_at", since);
+  }
   if (!opts?.todos) {
-    q = q.in("category", ["aposta_segura", "boas_vindas"]).gt("entered", 0);
+    if (!opts?.category) q = q.in("category", ["aposta_segura", "boas_vindas"]);
+    q = q.gt("entered", 0);
   }
 
   const { data, error } = await q;
@@ -84,6 +97,7 @@ export async function getCampaignFlows(opts?: {
       ctr,
       category: (r.category as CampaignCategory) ?? "outro",
       status: r.status,
+      flowCreatedAt: r.flow_created_at,
       capturedAt: r.captured_at,
     };
   });

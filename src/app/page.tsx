@@ -157,6 +157,7 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
   try {
     campaigns = await getCampaignFlows({
       affiliateIds: selected ? [selected.id] : undefined,
+      sinceDays, // filtra as campanhas CRIADAS na janela (a contagem da tag é acumulada)
     });
   } catch {
     campaigns = [];
@@ -200,7 +201,7 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
         {/* ROW A */}
         <div className="grid gap-4 lg:grid-cols-3">
           <section className="flex flex-col rounded-xl border border-line bg-panel lg:col-span-2">
-            <CardHead d="M21 6H3M18 12H6M14 18h-4" title="Campanhas" cap={`Quem iniciou cada fluxo · ${escopoLabel}`} href="/campanhas" />
+            <CardHead d="M21 6H3M18 12H6M14 18h-4" title="Campanhas" cap={`Criadas nos últimos ${sinceDays} dias · ${escopoLabel}`} href="/campanhas" />
             <div className="p-[18px]">
               {topCampaigns.length === 0 ? (
                 <div className="flex min-h-[200px] flex-col items-center justify-center rounded-lg px-6 py-6 text-center">

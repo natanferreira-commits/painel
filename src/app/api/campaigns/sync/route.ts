@@ -43,6 +43,7 @@ async function run() {
           reached: f.reached,
           category: f.category,
           status: f.status,
+          flow_created_at: f.createdAt,
           captured_at: now,
         }));
         const { error } = await supabase.from("campaign_flows").insert(rows);
