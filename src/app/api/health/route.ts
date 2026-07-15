@@ -4,6 +4,46 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// Diagnóstico: o que cada afiliado tem ligado e se chegou dado.
+// É isso que mostra por que um card fica vazio pra um afiliado e não pra outro.
+async function cobertura(supabase: ReturnType<typeof getSupabaseAdmin>) {
+  const [affs, links, traffic, camps] = await Promise.all([
+    supabase
+      .from("affiliates")
+      .select("id,nome,sendpulse_client_id,traffic_sheet_url,ativo")
+      .order("nome"),
+    supabase.from("affiliate_channels").select("affiliate_id"),
+    supabase.from("traffic_daily").select("affiliate_id,leads,gasto"),
+    supabase.from("campaign_flows").select("affiliate_id"),
+  ]);
+
+  type A = {
+    id: number;
+    nome: string;
+    sendpulse_client_id: string | null;
+    traffic_sheet_url: string | null;
+    ativo: boolean | null;
+  };
+  const conta = (rows: { affiliate_id: number }[] | null, id: number) =>
+    (rows ?? []).filter((r) => r.affiliate_id === id).length;
+
+  return ((affs.data as A[] | null) ?? []).map((a) => {
+    const t = ((traffic.data as { affiliate_id: number; leads: number | null; gasto: string | number | null }[] | null) ?? [])
+      .filter((r) => r.affiliate_id === a.id);
+    return {
+      afiliado: a.nome,
+      ativo: a.ativo ?? true,
+      canais_vinculados: conta(links.data as { affiliate_id: number }[] | null, a.id),
+      sendpulse_conectado: Boolean(a.sendpulse_client_id),
+      planilha_conectada: Boolean(a.traffic_sheet_url),
+      campanhas: conta(camps.data as { affiliate_id: number }[] | null, a.id),
+      trafego_dias: t.length,
+      trafego_leads: t.reduce((s, r) => s + (r.leads ?? 0), 0),
+      trafego_gasto: Math.round(t.reduce((s, r) => s + Number(r.gasto ?? 0), 0) * 100) / 100,
+    };
+  });
+}
+
 // Saúde da ingestão/categorização — só leitura, sem efeito colateral.
 // Fica fora do login (rota /api) pra dar pra checar rápido "está entrando post?".
 export async function GET() {
@@ -101,6 +141,7 @@ export async function GET() {
           (whLast.data as { received_at: string }[] | null)?.[0]?.received_at ??
           null,
       },
+      cobertura_por_afiliado: await cobertura(supabase),
       canais_detectados: channels.length,
       canais: channels,
     });

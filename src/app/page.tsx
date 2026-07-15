@@ -30,30 +30,51 @@ function Arrow() {
 }
 
 /* ---------- KPI ---------- */
+// delta: variação % vs. o período anterior de mesmo tamanho.
+// maiorEhMelhor: pinta verde/vermelho. Se undefined, mostra sem julgar (ex: gasto).
 function Kpi({
   label,
   value,
   sub,
   warn,
   empty,
+  delta,
+  maiorEhMelhor,
 }: {
   label: string;
   value: string;
   sub?: string;
   warn?: boolean;
   empty?: boolean;
+  delta?: number | null;
+  maiorEhMelhor?: boolean;
 }) {
+  const subiu = (delta ?? 0) > 0;
+  const cor =
+    delta === null || delta === undefined || delta === 0 || maiorEhMelhor === undefined
+      ? "text-muted"
+      : subiu === maiorEhMelhor
+        ? "text-ok"
+        : "text-crit";
   return (
     <div className={`flex min-h-[104px] flex-col justify-between rounded-xl border p-4 ${empty ? "border-dashed border-[#2a362e] bg-panel/40" : "border-line bg-panel"}`}>
       <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-muted">{label}</div>
       <div className={`mt-2 text-[27px] font-bold leading-none tracking-tight tabular-nums ${empty ? "text-faint" : warn ? "text-warn" : "text-ink"}`}>{value}</div>
-      <div className="mt-2.5 flex items-center gap-1.5 text-xs">
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-1.5 text-xs">
         {empty ? (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-line px-2 py-0.5 text-[11px] text-faint">
             <span className="h-[5px] w-[5px] rounded-full bg-faint" /> aguardando fonte
           </span>
         ) : (
-          sub && <span className="text-faint">{sub}</span>
+          <>
+            {delta !== null && delta !== undefined && (
+              <span className={`inline-flex items-center gap-0.5 font-semibold ${cor}`}>
+                <span aria-hidden>{subiu ? "▲" : delta < 0 ? "▼" : "="}</span>
+                {Math.abs(delta).toFixed(1).replace(".", ",")}%
+              </span>
+            )}
+            {sub && <span className="text-faint">{sub}</span>}
+          </>
         )}
       </div>
     </div>
@@ -134,13 +155,39 @@ function distRows(summary: ContentSummary) {
   return rows;
 }
 
+const MAX_DIAS = 400; // "desde o início" — cobre todo o histórico
+
+function isoDaysAgo(n: number): string {
+  return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+}
+
+// variação % vs. período anterior. null = sem base de comparação.
+function pctDelta(cur: number, prev: number): number | null {
+  if (!prev || prev <= 0) return null;
+  return Math.round(((cur - prev) / prev) * 1000) / 10;
+}
+
 export default async function VisaoGeral({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
   const afId = typeof sp.af === "string" ? sp.af : "";
-  const sinceDays = sp.periodo === "7" ? 7 : sp.periodo === "90" ? 90 : 30;
+  const isMax = sp.periodo === "max";
+  const sinceDays = isMax
+    ? MAX_DIAS
+    : sp.periodo === "7"
+      ? 7
+      : sp.periodo === "90"
+        ? 90
+        : 30;
+
+  // janela atual e a anterior de mesmo tamanho (pra comparar)
+  const to = isoDaysAgo(0);
+  const from = isoDaysAgo(sinceDays - 1);
+  const prevTo = isoDaysAgo(sinceDays);
+  const prevFrom = isoDaysAgo(sinceDays * 2 - 1);
 
   let affiliates: AffiliateOption[] = [];
   let summary: ContentSummary = { total: 0, perDay: 0, peakHour: null, byTipo: [] };
+  let postsPrev: number | null = null;
   let selected: AffiliateOption | null = null;
   let semCanal = false;
 
@@ -150,6 +197,11 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
     const channelIds = selected ? selected.channelIds : undefined;
     if (selected && selected.channelIds.length === 0) semCanal = true;
     summary = await getContentSummary({ channelIds, sinceDays });
+    if (!isMax) {
+      // truque: total(2N) - total(N) = total do período anterior
+      const dobro = await getContentSummary({ channelIds, sinceDays: sinceDays * 2 });
+      postsPrev = Math.max(0, dobro.total - summary.total);
+    }
   } catch {
     // banco indisponível / migração pendente: segue com valores vazios
   }
@@ -158,7 +210,8 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
   try {
     campaigns = await getCampaignFlows({
       affiliateIds: selected ? [selected.id] : undefined,
-      sinceDays, // filtra as campanhas CRIADAS na janela (a contagem da tag é acumulada)
+      // "desde o início" não filtra por data de campanha
+      sinceDays: isMax ? undefined : sinceDays,
     });
   } catch {
     campaigns = [];
@@ -171,7 +224,7 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
   const conversaoGeral =
     totalEntered > 0 ? Math.round((totalReached / totalEntered) * 1000) / 10 : null;
 
-  let traffic: TrafficSummary = {
+  const vazio: TrafficSummary = {
     gasto: 0,
     leads: 0,
     custoLead: null,
@@ -179,17 +232,33 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
     ftds: 0,
     daily: [],
   };
+  let traffic: TrafficSummary = vazio;
+  let trafficPrev: TrafficSummary = vazio;
   try {
-    traffic = await getTrafficSummary({
-      affiliateIds: selected ? [selected.id] : undefined,
-      sinceDays,
-    });
+    const affiliateIds = selected ? [selected.id] : undefined;
+    traffic = await getTrafficSummary({ affiliateIds, from, to });
+    if (!isMax) {
+      trafficPrev = await getTrafficSummary({
+        affiliateIds,
+        from: prevFrom,
+        to: prevTo,
+      });
+    }
   } catch {
     // migração pendente / sem dado ainda
   }
 
+  const deltaGasto = isMax ? null : pctDelta(traffic.gasto, trafficPrev.gasto);
+  const deltaLeads = isMax ? null : pctDelta(traffic.leads, trafficPrev.leads);
+  const deltaPosts =
+    isMax || postsPrev === null ? null : pctDelta(summary.total, postsPrev);
+
   const rows = distRows(summary);
   const escopoLabel = selected ? selected.nome : "todos os afiliados";
+  const periodoLabel = isMax ? "desde o início" : `últimos ${sinceDays} dias`;
+  const comparativoLabel = isMax
+    ? "todo o histórico"
+    : `vs. ${sinceDays} dias anteriores`;
   const brl = (n: number) =>
     n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
@@ -199,7 +268,7 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
         <div>
           <h1 className="text-[19px] font-semibold tracking-tight">Visão geral</h1>
           <p className="mt-0.5 text-[12.5px] text-muted">
-            Operação Arena · {escopoLabel} · últimos {sinceDays} dias
+            Operação Arena · {escopoLabel} · {periodoLabel}
           </p>
         </div>
         <DashboardFilters affiliates={affiliates.map((a) => ({ id: a.id, nome: a.nome }))} />
@@ -212,7 +281,9 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
             <Kpi
               label="Leads no grupo"
               value={traffic.leads.toLocaleString("pt-BR")}
-              sub={`${escopoLabel} · ${sinceDays}d`}
+              delta={deltaLeads}
+              maiorEhMelhor
+              sub={comparativoLabel}
             />
           ) : (
             <Kpi label="Leads no grupo" value="—" empty />
@@ -221,7 +292,12 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
             <Kpi
               label="Gasto de tráfego"
               value={brl(traffic.gasto)}
-              sub={traffic.custoLead !== null ? `R$ ${traffic.custoLead.toFixed(2)} por lead` : undefined}
+              delta={deltaGasto}
+              sub={
+                traffic.custoLead !== null
+                  ? `R$ ${traffic.custoLead.toFixed(2)}/lead`
+                  : comparativoLabel
+              }
             />
           ) : (
             <Kpi label="Gasto de tráfego" value="—" empty />
@@ -229,7 +305,9 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
           <Kpi
             label="Posts categorizados"
             value={summary.total.toLocaleString("pt-BR")}
-            sub={`${escopoLabel} · ${sinceDays}d`}
+            delta={deltaPosts}
+            maiorEhMelhor
+            sub={comparativoLabel}
           />
           <Kpi label="Pendências no suporte" value="7" warn sub="2 acima do SLA" />
         </section>
@@ -237,7 +315,7 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
         {/* ROW A */}
         <div className="grid gap-4 lg:grid-cols-3">
           <section className="flex flex-col rounded-xl border border-line bg-panel lg:col-span-2">
-            <CardHead d="M21 6H3M18 12H6M14 18h-4" title="Campanhas" cap={`Criadas nos últimos ${sinceDays} dias · ${escopoLabel}`} href="/campanhas" />
+            <CardHead d="M21 6H3M18 12H6M14 18h-4" title="Campanhas" cap={`${isMax ? "Todas as campanhas" : `Criadas nos ${periodoLabel}`} · ${escopoLabel}`} href="/campanhas" />
             <div className="p-[18px]">
               {topCampaigns.length === 0 ? (
                 <div className="flex min-h-[200px] flex-col items-center justify-center rounded-lg px-6 py-6 text-center">
@@ -397,12 +475,14 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
                       <span className="text-[19px] font-bold tracking-tight tabular-nums">{summary.total.toLocaleString("pt-BR")}</span>
                       <span className="text-[11px] text-muted">posts no período</span>
                     </div>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-[19px] font-bold tracking-tight tabular-nums">
-                        ~{summary.perDay}<span className="text-[13px] font-normal text-muted">/dia</span>
-                      </span>
-                      <span className="text-[11px] text-muted">frequência média</span>
-                    </div>
+                    {!isMax && (
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[19px] font-bold tracking-tight tabular-nums">
+                          ~{summary.perDay}<span className="text-[13px] font-normal text-muted">/dia</span>
+                        </span>
+                        <span className="text-[11px] text-muted">frequência média</span>
+                      </div>
+                    )}
                     <div className="flex flex-col gap-0.5">
                       <span className="text-[19px] font-bold tracking-tight tabular-nums">
                         {summary.peakHour !== null ? `${String(summary.peakHour).padStart(2, "0")}h` : "—"}

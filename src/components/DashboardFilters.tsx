@@ -51,6 +51,7 @@ export function DashboardFilters({
         <option value="7">Últimos 7 dias</option>
         <option value="30">Últimos 30 dias</option>
         <option value="90">Últimos 90 dias</option>
+        <option value="max">Desde o início</option>
       </select>
     </div>
   );

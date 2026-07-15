@@ -95,19 +95,19 @@ type Row = {
   ftds: number | null;
 };
 
+// Janela explícita (from..to em ISO) pra permitir comparar período com período.
 export async function getTrafficSummary(opts: {
   affiliateIds?: number[];
-  sinceDays: number;
+  from: string;
+  to: string;
 }): Promise<TrafficSummary> {
   const supabase = getSupabaseAdmin();
-  const since = new Date(Date.now() - opts.sinceDays * 86_400_000)
-    .toISOString()
-    .slice(0, 10);
 
   let q = supabase
     .from("traffic_daily")
     .select("date,gasto,leads,registrations,ftds")
-    .gte("date", since)
+    .gte("date", opts.from)
+    .lte("date", opts.to)
     .order("date", { ascending: true });
   if (opts.affiliateIds?.length) q = q.in("affiliate_id", opts.affiliateIds);
 
