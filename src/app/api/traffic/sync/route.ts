@@ -89,7 +89,13 @@ async function syncOne(
       };
     });
 
-  await supabase.from("traffic_daily").delete().eq("affiliate_id", a.id).gte("date", from);
+  // apaga só o intervalo que estamos regravando (permite backfill em fatias)
+  await supabase
+    .from("traffic_daily")
+    .delete()
+    .eq("affiliate_id", a.id)
+    .gte("date", from)
+    .lte("date", to);
   if (rows.length) {
     const { error } = await supabase.from("traffic_daily").insert(rows);
     if (error) throw new Error(error.message);
@@ -111,8 +117,13 @@ async function run(req: NextRequest) {
   const force = req.nextUrl.searchParams.get("force") === "1";
   const started = Date.now();
 
-  const from = isoDaysAgo(JANELA_DIAS);
-  const to = isoDaysAgo(0);
+  // Intervalo opcional (?from=&to=) pra backfill em fatias — canal de volume
+  // muito alto (Mateus) não cabe numa invocação só com a janela inteira.
+  const isISO = (v: string | null): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  const qFrom = req.nextUrl.searchParams.get("from");
+  const qTo = req.nextUrl.searchParams.get("to");
+  const from = isISO(qFrom) ? qFrom : isoDaysAgo(JANELA_DIAS);
+  const to = isISO(qTo) ? qTo : isoDaysAgo(0);
 
   const tgByTelegramId = new Map<string, number>();
   if (tgKey()) {
