@@ -187,7 +187,6 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
 
   let affiliates: AffiliateOption[] = [];
   let summary: ContentSummary = { total: 0, perDay: 0, peakHour: null, byTipo: [] };
-  let postsPrev: number | null = null;
   let selected: AffiliateOption | null = null;
   let semCanal = false;
 
@@ -197,11 +196,6 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
     const channelIds = selected ? selected.channelIds : undefined;
     if (selected && selected.channelIds.length === 0) semCanal = true;
     summary = await getContentSummary({ channelIds, sinceDays });
-    if (!isMax) {
-      // truque: total(2N) - total(N) = total do período anterior
-      const dobro = await getContentSummary({ channelIds, sinceDays: sinceDays * 2 });
-      postsPrev = Math.max(0, dobro.total - summary.total);
-    }
   } catch {
     // banco indisponível / migração pendente: segue com valores vazios
   }
@@ -250,8 +244,10 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
 
   const deltaGasto = isMax ? null : pctDelta(traffic.gasto, trafficPrev.gasto);
   const deltaLeads = isMax ? null : pctDelta(traffic.leads, trafficPrev.leads);
-  const deltaPosts =
-    isMax || postsPrev === null ? null : pctDelta(summary.total, postsPrev);
+  const deltaCustoLead =
+    isMax || traffic.custoLead === null || trafficPrev.custoLead === null
+      ? null
+      : pctDelta(traffic.custoLead, trafficPrev.custoLead);
 
   const rows = distRows(summary);
   const escopoLabel = selected ? selected.nome : "todos os afiliados";
@@ -293,22 +289,22 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
               label="Gasto de tráfego"
               value={brl(traffic.gasto)}
               delta={deltaGasto}
-              sub={
-                traffic.custoLead !== null
-                  ? `R$ ${traffic.custoLead.toFixed(2)}/lead`
-                  : comparativoLabel
-              }
+              sub={comparativoLabel}
             />
           ) : (
             <Kpi label="Gasto de tráfego" value="—" empty />
           )}
-          <Kpi
-            label="Posts categorizados"
-            value={summary.total.toLocaleString("pt-BR")}
-            delta={deltaPosts}
-            maiorEhMelhor
-            sub={comparativoLabel}
-          />
+          {traffic.custoLead !== null ? (
+            <Kpi
+              label="Custo por lead"
+              value={`R$ ${traffic.custoLead.toFixed(2).replace(".", ",")}`}
+              delta={deltaCustoLead}
+              maiorEhMelhor={false}
+              sub={comparativoLabel}
+            />
+          ) : (
+            <Kpi label="Custo por lead" value="—" empty />
+          )}
           <Kpi label="Pendências no suporte" value="7" warn sub="2 acima do SLA" />
         </section>
 
