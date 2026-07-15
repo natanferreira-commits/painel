@@ -87,6 +87,51 @@ function chunkRanges(from: string, to: string, maxDays: number): [string, string
   return out;
 }
 
+const diasEntre = (a: string, b: string) =>
+  Math.round(
+    (new Date(`${b}T00:00:00Z`).getTime() - new Date(`${a}T00:00:00Z`).getTime()) /
+      86_400_000,
+  );
+const somaDias = (iso: string, n: number) =>
+  new Date(new Date(`${iso}T00:00:00Z`).getTime() + n * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+
+// Busca um intervalo. Se a API engasgar (500 mesmo após os retries), parte o
+// intervalo no meio e tenta cada metade. Canal de volume alto (ex: Mateus)
+// não aguenta nem 30 dias no pico — assim o código se adapta sozinho em vez
+// de a gente ficar caçando um número mágico que serve pra todos.
+async function buscaIntervalo(
+  from: string,
+  to: string,
+  channelIds: number[],
+  profundidade = 0,
+): Promise<TgDailyRow[]> {
+  const qs = new URLSearchParams({ from, to });
+  if (channelIds.length) qs.set("channel_ids", channelIds.join(","));
+  const r = await tgGet(`/v1/metrics/daily?${qs.toString()}`);
+
+  if (r.status === 200) {
+    const out: TgDailyRow[] = [];
+    for (const d of (r.body as { daily?: TgDailyRaw[] } | null)?.daily ?? []) {
+      const iso = resolveYear(d.date, from, to);
+      if (iso) out.push({ ...d, date: iso });
+    }
+    return out;
+  }
+
+  const dias = diasEntre(from, to);
+  if (dias >= 1 && profundidade < 6) {
+    const meio = somaDias(from, Math.floor(dias / 2));
+    const [a, b] = [
+      await buscaIntervalo(from, meio, channelIds, profundidade + 1),
+      await buscaIntervalo(somaDias(meio, 1), to, channelIds, profundidade + 1),
+    ];
+    return [...a, ...b];
+  }
+  throw new Error(`TrackGram /v1/metrics/daily (${from}..${to}): HTTP ${r.status}`);
+}
+
 export async function tgDaily(
   from: string,
   to: string,
@@ -94,17 +139,7 @@ export async function tgDaily(
 ): Promise<TgDailyRow[]> {
   const out: TgDailyRow[] = [];
   for (const [f, t] of chunkRanges(from, to, MAX_DIAS_POR_CHAMADA)) {
-    const qs = new URLSearchParams({ from: f, to: t });
-    if (channelIds.length) qs.set("channel_ids", channelIds.join(","));
-    const r = await tgGet(`/v1/metrics/daily?${qs.toString()}`);
-    if (r.status !== 200) {
-      throw new Error(`TrackGram /v1/metrics/daily (${f}..${t}): HTTP ${r.status}`);
-    }
-    for (const d of (r.body as { daily?: TgDailyRaw[] } | null)?.daily ?? []) {
-      const iso = resolveYear(d.date, f, t);
-      if (!iso) continue;
-      out.push({ ...d, date: iso });
-    }
+    out.push(...(await buscaIntervalo(f, t, channelIds)));
   }
   return out;
 }
