@@ -66,6 +66,7 @@ export async function PATCH(req: NextRequest) {
   if ("ativo" in body) patch.ativo = Boolean(body.ativo);
   if ("sendpulse_client_id" in body) patch.sendpulse_client_id = strOrNull(body.sendpulse_client_id);
   if ("sendpulse_client_secret" in body) patch.sendpulse_client_secret = strOrNull(body.sendpulse_client_secret);
+  if ("traffic_sheet_url" in body) patch.traffic_sheet_url = strOrNull(body.traffic_sheet_url);
 
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ ok: false, error: "nada pra atualizar" }, { status: 400 });

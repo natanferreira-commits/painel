@@ -32,6 +32,8 @@ export function AffiliatesManager({
   const [spOpen, setSpOpen] = useState<number | null>(null);
   const [spId, setSpId] = useState("");
   const [spSecret, setSpSecret] = useState("");
+  const [sheetOpen, setSheetOpen] = useState<number | null>(null);
+  const [sheetUrl, setSheetUrl] = useState("");
 
   async function call(
     path: string,
@@ -104,6 +106,17 @@ export function AffiliatesManager({
       setSpOpen(null);
       setSpId("");
       setSpSecret("");
+    }
+  }
+
+  async function saveSheet(affiliateId: number, url: string) {
+    const ok = await call("/api/affiliates", "PATCH", {
+      id: affiliateId,
+      traffic_sheet_url: url.trim() || null,
+    });
+    if (ok) {
+      setSheetOpen(null);
+      setSheetUrl("");
     }
   }
 
@@ -290,6 +303,53 @@ export function AffiliatesManager({
                         className="ml-1 text-muted underline decoration-dotted transition-colors hover:text-lime"
                       >
                         {a.sendpulseConnected ? "trocar chave" : "conectar"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Planilha de gasto (tráfego) */}
+                <div className="mt-2.5 border-t border-linesoft pt-2.5">
+                  {sheetOpen === a.id ? (
+                    <div className="flex flex-wrap items-end gap-2">
+                      <input
+                        className={`${inputCls} min-w-[240px] flex-1`}
+                        placeholder="URL da planilha publicada (…/pub?output=csv)"
+                        value={sheetUrl}
+                        onChange={(e) => setSheetUrl(e.target.value)}
+                      />
+                      <button
+                        onClick={() => saveSheet(a.id, sheetUrl)}
+                        disabled={busy}
+                        className="rounded-lg bg-lime px-3 py-2 text-[12.5px] font-semibold text-[#06120c] disabled:opacity-40"
+                      >
+                        Salvar
+                      </button>
+                      <button
+                        onClick={() => setSheetOpen(null)}
+                        className="px-2 py-2 text-[12.5px] text-muted hover:text-ink"
+                      >
+                        cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-[12px]">
+                      <span className="text-faint">Planilha de gasto:</span>
+                      {a.trafficSheetUrl ? (
+                        <span className="inline-flex items-center gap-1.5 text-ok">
+                          <span className="h-[7px] w-[7px] rounded-full bg-ok" /> conectada
+                        </span>
+                      ) : (
+                        <span className="text-muted">não conectada</span>
+                      )}
+                      <button
+                        onClick={() => {
+                          setSheetOpen(a.id);
+                          setSheetUrl(a.trafficSheetUrl ?? "");
+                        }}
+                        className="ml-1 text-muted underline decoration-dotted transition-colors hover:text-lime"
+                      >
+                        {a.trafficSheetUrl ? "trocar" : "conectar"}
                       </button>
                     </div>
                   )}

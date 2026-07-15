@@ -9,6 +9,7 @@ export type Affiliate = {
   channels: LinkedChannel[];
   sendpulseBotId: string | null;
   sendpulseConnected: boolean; // tem credencial de API salva
+  trafficSheetUrl: string | null; // planilha publicada (CSV) com o GASTO
   ativo: boolean;
 };
 
@@ -54,6 +55,7 @@ type AffRow = {
   nicho: string | null;
   id_bot_sendpulse: string | null;
   sendpulse_client_id: string | null;
+  traffic_sheet_url: string | null;
   ativo: boolean | null;
 };
 
@@ -69,7 +71,7 @@ export async function getAffiliates(): Promise<Affiliate[]> {
   const [affsRes, linksRes] = await Promise.all([
     supabase
       .from("affiliates")
-      .select("id,nome,nicho,id_bot_sendpulse,sendpulse_client_id,ativo")
+      .select("id,nome,nicho,id_bot_sendpulse,sendpulse_client_id,traffic_sheet_url,ativo")
       .order("ativo", { ascending: false })
       .order("nome", { ascending: true }),
     supabase
@@ -96,6 +98,7 @@ export async function getAffiliates(): Promise<Affiliate[]> {
     ),
     sendpulseBotId: r.id_bot_sendpulse,
     sendpulseConnected: Boolean(r.sendpulse_client_id),
+    trafficSheetUrl: r.traffic_sheet_url,
     ativo: r.ativo ?? true,
   }));
 }

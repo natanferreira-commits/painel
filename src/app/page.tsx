@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getAffiliateOptions, type AffiliateOption } from "@/lib/affiliates";
 import { getContentSummary, type ContentSummary } from "@/lib/analytics";
 import { getCampaignFlows, type CampaignFlow } from "@/lib/campaigns";
+import { getTrafficSummary, type TrafficSummary } from "@/lib/traffic";
 import { TIPO_LABEL } from "@/lib/taxonomy";
 import { DashboardFilters } from "@/components/DashboardFilters";
 
@@ -170,8 +171,27 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
   const conversaoGeral =
     totalEntered > 0 ? Math.round((totalReached / totalEntered) * 1000) / 10 : null;
 
+  let traffic: TrafficSummary = {
+    gasto: 0,
+    leads: 0,
+    custoLead: null,
+    registrations: 0,
+    ftds: 0,
+    daily: [],
+  };
+  try {
+    traffic = await getTrafficSummary({
+      affiliateIds: selected ? [selected.id] : undefined,
+      sinceDays,
+    });
+  } catch {
+    // migração pendente / sem dado ainda
+  }
+
   const rows = distRows(summary);
   const escopoLabel = selected ? selected.nome : "todos os afiliados";
+  const brl = (n: number) =>
+    n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
   return (
     <main className="flex min-w-0 flex-col">
@@ -188,8 +208,24 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
       <div className="flex flex-col gap-4 px-6 pb-10 pt-[22px]">
         {/* KPI strip */}
         <section className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
-          <Kpi label="Leads no grupo" value="—" empty />
-          <Kpi label="Gasto de tráfego" value="—" empty />
+          {traffic.leads > 0 ? (
+            <Kpi
+              label="Leads no grupo"
+              value={traffic.leads.toLocaleString("pt-BR")}
+              sub={`${escopoLabel} · ${sinceDays}d`}
+            />
+          ) : (
+            <Kpi label="Leads no grupo" value="—" empty />
+          )}
+          {traffic.gasto > 0 ? (
+            <Kpi
+              label="Gasto de tráfego"
+              value={brl(traffic.gasto)}
+              sub={traffic.custoLead !== null ? `R$ ${traffic.custoLead.toFixed(2)} por lead` : undefined}
+            />
+          ) : (
+            <Kpi label="Gasto de tráfego" value="—" empty />
+          )}
           <Kpi
             label="Posts categorizados"
             value={summary.total.toLocaleString("pt-BR")}
@@ -262,20 +298,76 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
           </section>
 
           <section className="flex flex-col rounded-xl border border-line bg-panel">
-            <CardHead d="M3 3v18h18M18 8l-5 5-3-3-4 4" title="Tráfego × funil" cap="Gasto vs. resultado do funil de boas-vindas" />
+            <CardHead d="M3 3v18h18M18 8l-5 5-3-3-4 4" title="Tráfego × leads" cap={`Gasto vs. leads · ${escopoLabel}`} />
             <div className="p-[18px]">
-              <div className="flex min-h-[200px] flex-col items-center justify-center rounded-lg px-6 py-6 text-center">
-                <div className="mb-3.5 grid h-[42px] w-[42px] place-items-center rounded-xl border border-line bg-panel2 text-muted">
-                  <I d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" cls="h-5 w-5" />
+              {traffic.gasto === 0 && traffic.leads === 0 ? (
+                <div className="flex min-h-[200px] flex-col items-center justify-center rounded-lg px-6 py-6 text-center">
+                  <div className="mb-3.5 grid h-[42px] w-[42px] place-items-center rounded-xl border border-line bg-panel2 text-muted">
+                    <I d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" cls="h-5 w-5" />
+                  </div>
+                  <h3 className="mb-1.5 text-sm font-semibold">Sem tráfego no período</h3>
+                  <p className="max-w-[300px] text-[12.5px] leading-relaxed text-muted">
+                    Conecte a planilha de gasto do afiliado em <b>Afiliados</b> e sincronize.
+                  </p>
                 </div>
-                <h3 className="mb-1.5 text-sm font-semibold">Sem custo de tráfego ainda</h3>
-                <p className="max-w-[300px] text-[12.5px] leading-relaxed text-muted">
-                  Vai comparar o gasto em mídia com os leads que o funil de boas-vindas gerou. Falta a fonte de gasto.
-                </p>
-                <span className="mt-3.5 inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-[11px] text-faint">
-                  Conecta: <b className="font-semibold text-warn">Meta Ads</b> + funil do SendPulse
-                </span>
-              </div>
+              ) : (
+                (() => {
+                  const validos = traffic.daily.filter(
+                    (d) => (d.gasto ?? 0) > 0 && (d.leads ?? 0) > 0,
+                  );
+                  const comCusto = validos.map((d) => ({
+                    date: d.date,
+                    custo: (d.gasto ?? 0) / (d.leads ?? 1),
+                  }));
+                  const melhor = comCusto.length
+                    ? comCusto.reduce((a, b) => (b.custo < a.custo ? b : a))
+                    : null;
+                  const pior = comCusto.length
+                    ? comCusto.reduce((a, b) => (b.custo > a.custo ? b : a))
+                    : null;
+                  const dm = (s: string) => s.slice(5).split("-").reverse().join("/");
+                  return (
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[26px] font-bold leading-none tracking-tight tabular-nums">
+                          {traffic.custoLead !== null ? `R$ ${traffic.custoLead.toFixed(2)}` : "—"}
+                        </span>
+                        <span className="text-[11px] text-muted">custo por lead</span>
+                      </div>
+                      <div className="flex gap-5 border-t border-linesoft pt-3">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[15px] font-semibold tabular-nums">{brl(traffic.gasto)}</span>
+                          <span className="text-[11px] text-muted">gasto</span>
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[15px] font-semibold tabular-nums">
+                            {traffic.leads.toLocaleString("pt-BR")}
+                          </span>
+                          <span className="text-[11px] text-muted">leads</span>
+                        </div>
+                      </div>
+                      {melhor && pior && melhor.date !== pior.date && (
+                        <div className="flex flex-col gap-1.5 border-t border-linesoft pt-3 text-[12px]">
+                          <div className="flex items-center gap-2">
+                            <span className="h-[7px] w-[7px] rounded-full bg-ok" />
+                            <span className="text-muted">melhor dia {dm(melhor.date)}</span>
+                            <span className="ml-auto font-semibold tabular-nums text-ok">
+                              R$ {melhor.custo.toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="h-[7px] w-[7px] rounded-full bg-crit" />
+                            <span className="text-muted">pior dia {dm(pior.date)}</span>
+                            <span className="ml-auto font-semibold tabular-nums text-crit">
+                              R$ {pior.custo.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()
+              )}
             </div>
           </section>
         </div>
@@ -358,8 +450,8 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
         </div>
 
         <div className="flex flex-wrap justify-center gap-3.5 pt-1.5 text-[11.5px] text-faint">
-          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-[2px] bg-ok" /> Conteúdo: dado real, reage aos filtros</span>
-          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-[2px] border border-dashed border-[#3a463e] bg-[#2a362e]" /> Ações, Tráfego, Suporte-por-afiliado: fonte a conectar</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-[2px] bg-ok" /> Conteúdo · Campanhas · Tráfego: dado real, reage aos filtros</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-[2px] border border-dashed border-[#3a463e] bg-[#2a362e]" /> Suporte por afiliado: falta mapear o bot do SendPulse</span>
         </div>
       </div>
     </main>
