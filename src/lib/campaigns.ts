@@ -19,7 +19,7 @@ export type CampaignFlow = {
   entered: number | null;
   endTag: string | null;
   reached: number | null;
-  ctr: number | null; // % de quem entrou e chegou no fim
+  conversao: number | null; // % de quem entrou e chegou no fim (taxa de conversão)
   category: CampaignCategory;
   status: number | null;
   flowCreatedAt: string | null; // quando a campanha foi criada
@@ -79,7 +79,7 @@ export async function getCampaignFlows(opts?: {
   return ((data as unknown as Row[] | null) ?? []).map((r) => {
     const entered = r.entered;
     const reached = r.reached;
-    const ctr =
+    const conversao =
       entered && entered > 0 && reached !== null
         ? Math.round((reached / entered) * 1000) / 10
         : null;
@@ -94,7 +94,7 @@ export async function getCampaignFlows(opts?: {
       entered,
       endTag: r.end_tag,
       reached,
-      ctr,
+      conversao,
       category: (r.category as CampaignCategory) ?? "outro",
       status: r.status,
       flowCreatedAt: r.flow_created_at,

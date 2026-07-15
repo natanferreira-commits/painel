@@ -23,10 +23,10 @@ function str(v: string | string[] | undefined): string | undefined {
 
 const CAT_ORDER = ["aposta_segura", "boas_vindas"] as const;
 
-function ctrColor(ctr: number | null) {
-  if (ctr === null) return "text-faint";
-  if (ctr >= 10) return "text-ok";
-  if (ctr >= 5) return "text-warn";
+function conversaoColor(v: number | null) {
+  if (v === null) return "text-faint";
+  if (v >= 10) return "text-ok";
+  if (v >= 5) return "text-warn";
   return "text-crit";
 }
 
@@ -93,7 +93,7 @@ export default async function CampanhasPage({ searchParams }: { searchParams: SP
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Campanhas</h1>
           <p className="mt-1 text-sm text-muted">
-            Aposta Segura e Boas vindas · quem entrou, quem chegou no fim e o CTR
+            Aposta Segura e Boas vindas · quem entrou, quem chegou no fim e a conversão
             {lastSync && (
               <>
                 {" · "}sincronizado{" "}
@@ -157,7 +157,7 @@ export default async function CampanhasPage({ searchParams }: { searchParams: SP
                       <span className="text-right">Criada</span>
                       <span className="text-right">Entrou</span>
                       <span className="text-right">Chegou</span>
-                      <span className="text-right">CTR</span>
+                      <span className="text-right">Conv.</span>
                     </div>
 
                     <ul className="divide-y divide-linesoft">
@@ -183,8 +183,11 @@ export default async function CampanhasPage({ searchParams }: { searchParams: SP
                           >
                             {f.reached !== null ? f.reached.toLocaleString("pt-BR") : "—"}
                           </span>
-                          <span className={`text-right text-[13px] font-semibold tabular-nums ${ctrColor(f.ctr)}`}>
-                            {f.ctr !== null ? `${f.ctr}%` : "—"}
+                          <span
+                            className={`text-right text-[13px] font-semibold tabular-nums ${conversaoColor(f.conversao)}`}
+                            title="Taxa de conversão: chegou no fim ÷ entrou"
+                          >
+                            {f.conversao !== null ? `${f.conversao}%` : "—"}
                           </span>
                         </li>
                       ))}
@@ -198,7 +201,7 @@ export default async function CampanhasPage({ searchParams }: { searchParams: SP
       )}
 
       <p className="mt-6 text-[12px] text-faint">
-        CTR = chegou no fim ÷ entrou. O fim é a tag com &ldquo;atendimento&rdquo;; quando não
+        Taxa de conversão = chegou no fim ÷ entrou. O fim é a tag com &ldquo;atendimento&rdquo;; quando não
         existe, soma as tags &ldquo;apostou confirmado&rdquo;. &ldquo;—&rdquo; = fluxo sem tag de
         fim identificada.
       </p>

@@ -167,7 +167,7 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
     .slice(0, 6);
   const totalEntered = campaigns.reduce((s, c) => s + (c.entered ?? 0), 0);
   const totalReached = campaigns.reduce((s, c) => s + (c.reached ?? 0), 0);
-  const ctrGeral =
+  const conversaoGeral =
     totalEntered > 0 ? Math.round((totalReached / totalEntered) * 1000) / 10 : null;
 
   const rows = distRows(summary);
@@ -230,9 +230,9 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
                     </div>
                     <div className="flex flex-col gap-0.5">
                       <span className="text-[19px] font-bold tabular-nums text-lime">
-                        {ctrGeral !== null ? `${ctrGeral}%` : "—"}
+                        {conversaoGeral !== null ? `${conversaoGeral}%` : "—"}
                       </span>
-                      <span className="text-[11px] text-muted">CTR geral</span>
+                      <span className="text-[11px] text-muted">conversão</span>
                     </div>
                   </div>
                   <div className="flex flex-col gap-2.5">
@@ -247,8 +247,11 @@ export default async function VisaoGeral({ searchParams }: { searchParams: SP })
                         <span className="shrink-0 text-[12.5px] tabular-nums text-muted">
                           {(c.entered ?? 0).toLocaleString("pt-BR")} → {c.reached ?? "—"}
                         </span>
-                        <span className="w-12 shrink-0 text-right text-[13px] font-semibold tabular-nums">
-                          {c.ctr !== null ? `${c.ctr}%` : "—"}
+                        <span
+                          className="w-12 shrink-0 text-right text-[13px] font-semibold tabular-nums"
+                          title="Taxa de conversão"
+                        >
+                          {c.conversao !== null ? `${c.conversao}%` : "—"}
                         </span>
                       </div>
                     ))}
