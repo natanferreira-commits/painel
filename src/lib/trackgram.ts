@@ -25,10 +25,13 @@ async function fetchComRetry(url: string, key: string, tentativas = 3): Promise<
   return ultima as Response;
 }
 
-export async function tgGet(path: string): Promise<{ status: number; body: unknown }> {
+export async function tgGet(
+  path: string,
+  tentativas = 3,
+): Promise<{ status: number; body: unknown }> {
   const key = tgKey();
   if (!key) throw new Error("TRACKGRAM_API_KEY não configurada");
-  const res = await fetchComRetry(`${BASE}${path}`, key);
+  const res = await fetchComRetry(`${BASE}${path}`, key, tentativas);
   let body: unknown;
   try {
     body = await res.json();
@@ -109,7 +112,12 @@ async function buscaIntervalo(
 ): Promise<TgDailyRow[]> {
   const qs = new URLSearchParams({ from, to });
   if (channelIds.length) qs.set("channel_ids", channelIds.join(","));
-  const r = await tgGet(`/v1/metrics/daily?${qs.toString()}`);
+
+  // Se ainda dá pra dividir, falha rápido (1 tentativa) e divide — insistir
+  // num intervalo grande demais só queima o tempo da função. Só no menor
+  // nível é que vale gastar retry (aí sim o 500 é instabilidade).
+  const podeDividir = diasEntre(from, to) >= 1 && profundidade < 6;
+  const r = await tgGet(`/v1/metrics/daily?${qs.toString()}`, podeDividir ? 1 : 3);
 
   if (r.status === 200) {
     const out: TgDailyRow[] = [];
@@ -120,8 +128,8 @@ async function buscaIntervalo(
     return out;
   }
 
-  const dias = diasEntre(from, to);
-  if (dias >= 1 && profundidade < 6) {
+  if (podeDividir) {
+    const dias = diasEntre(from, to);
     const meio = somaDias(from, Math.floor(dias / 2));
     const [a, b] = [
       await buscaIntervalo(from, meio, channelIds, profundidade + 1),
