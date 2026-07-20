@@ -77,13 +77,20 @@ async function run(req: NextRequest) {
     });
   }
 
-  // Junta os contatos de todas as tags casadas, sem repetir.
+  // Junta os contatos de todas as tags casadas, sem repetir. Em paralelo —
+  // são leituras independentes, não faz sentido enfileirar.
+  const listas = await Promise.all(
+    alvo.map(async (t) => ({
+      tag: t.name,
+      count: t.count,
+      lista: await spContactsByTag(creds, bot.id, t.name),
+    })),
+  );
   const contatos = new Map<string, string[]>(); // id -> tags do contato
   const porTag: { tag: string; count: number; contatos: number }[] = [];
-  for (const t of alvo) {
-    const lista = await spContactsByTag(creds, bot.id, t.name);
+  for (const { tag, count, lista } of listas) {
     for (const c of lista) if (!contatos.has(c.id)) contatos.set(c.id, c.tags);
-    porTag.push({ tag: t.name, count: t.count, contatos: lista.length });
+    porTag.push({ tag, count, contatos: lista.length });
   }
 
   // Quem já tem a tag nova não precisa ser marcado de novo.
@@ -128,34 +135,48 @@ async function run(req: NextRequest) {
     );
   }
 
-  // Escreve, com prazo interno. setTag é idempotente: rodar de novo continua.
+  // Escreve em paralelo (teto baixo pra não irritar a API), com prazo interno.
+  // setTag é idempotente: rodar de novo continua de onde parou.
   const inicio = Date.now();
   let marcados = 0;
   let falhas = 0;
+  let inativos = 0;
   let erroExemplo: string | null = null;
-  let restantes = 0;
+  let cursor = 0;
 
-  for (const id of pendentes) {
-    if (Date.now() - inicio > DEADLINE_MS) {
-      restantes = pendentes.length - marcados - falhas;
-      break;
-    }
-    const r = await spSetTag(creds, id, [novaTag]);
-    if (r.ok) marcados++;
-    else {
-      falhas++;
-      if (!erroExemplo) erroExemplo = r.erro ?? null;
+  async function worker() {
+    while (cursor < pendentes.length && Date.now() - inicio < DEADLINE_MS) {
+      const id = pendentes[cursor++];
+      const r = await spSetTag(creds, id, [novaTag]);
+      if (r.ok) marcados++;
+      else {
+        falhas++;
+        // Contato inativo (bloqueou o bot / saiu) nunca vai aceitar tag —
+        // e também não receberia o disparo. Não é erro nosso.
+        if (/not_active/i.test(r.erro ?? "")) inativos++;
+        else if (!erroExemplo) erroExemplo = r.erro ?? null;
+      }
     }
   }
+  await Promise.all(
+    Array.from({ length: Math.min(6, pendentes.length) }, worker),
+  );
+  const restantes = Math.max(0, pendentes.length - cursor);
 
   return NextResponse.json({
     ...resumo,
     modo: "APLICADO",
     marcados,
     falhas,
+    inativos,
     erro_exemplo: erroExemplo,
     restantes,
-    dica: restantes > 0 ? "prazo atingido — rode de novo pra continuar" : "fim",
+    dica:
+      restantes > 0
+        ? "prazo atingido — rode de novo pra continuar"
+        : inativos > 0
+          ? `fim — ${inativos} contatos inativos não aceitam tag (e também não receberiam o disparo)`
+          : "fim",
   });
 }
 
