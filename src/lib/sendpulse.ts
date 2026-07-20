@@ -57,6 +57,107 @@ export async function spGet(
   return { status: res.status, body };
 }
 
+export async function spPost(
+  path: string,
+  creds: SpCreds,
+  body: unknown,
+): Promise<{ status: number; body: unknown }> {
+  const token = await spToken(creds);
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  let out: unknown;
+  try {
+    out = await res.json();
+  } catch {
+    out = await res.text();
+  }
+  return { status: res.status, body: out };
+}
+
+// ---- Segmentação por tag ----
+export type SpTag = { name: string; count: number };
+export type SpContact = { id: string; tags: string[] };
+
+// O bot principal de Telegram da conta (ignora o de atendimento).
+export async function spMainBot(
+  creds: SpCreds,
+): Promise<{ id: string; name: string } | null> {
+  const r = await spGet("/telegram/bots", creds);
+  const bots = (r.body as { data?: BotRow[] } | null)?.data ?? [];
+  for (const b of bots) {
+    const nome = b.channel_data?.name ?? b.name ?? b.id;
+    if (!EH_BOT_SUPORTE.test(nome)) return { id: b.id, name: nome };
+  }
+  return null;
+}
+
+export async function spTags(creds: SpCreds, botId: string): Promise<SpTag[]> {
+  const r = await spGet(`/telegram/tags?bot_id=${botId}`, creds);
+  return (r.body as { data?: SpTag[] } | null)?.data ?? [];
+}
+
+// Contatos de uma tag. Pagina com size+skip (a API devolve 100 por padrão).
+export async function spContactsByTag(
+  creds: SpCreds,
+  botId: string,
+  tag: string,
+): Promise<SpContact[]> {
+  const out: SpContact[] = [];
+  const vistos = new Set<string>();
+  let skip = 0;
+  for (let i = 0; i < 60; i++) {
+    const url = `/telegram/contacts/getByTag?bot_id=${botId}&tag=${encodeURIComponent(tag)}&size=200&skip=${skip}`;
+    const r = await spGet(url, creds);
+    const body = r.body as { data?: SpContact[]; meta?: { total?: number } } | null;
+    const lote = body?.data ?? [];
+    if (lote.length === 0) break;
+    for (const c of lote) {
+      if (vistos.has(c.id)) continue;
+      vistos.add(c.id);
+      out.push({ id: c.id, tags: Array.isArray(c.tags) ? c.tags : [] });
+    }
+    const total = body?.meta?.total ?? out.length;
+    skip += lote.length;
+    if (out.length >= total) break;
+  }
+  return out;
+}
+
+// Atribui tag(s) a um contato. Idempotente: repetir não duplica.
+export async function spSetTag(
+  creds: SpCreds,
+  contactId: string,
+  tags: string[],
+): Promise<{ ok: boolean; erro?: string }> {
+  const r = await spPost("/telegram/contacts/setTag", creds, {
+    contact_id: contactId,
+    tags,
+  });
+  if (r.status >= 200 && r.status < 300) return { ok: true };
+  return { ok: false, erro: `HTTP ${r.status}: ${JSON.stringify(r.body).slice(0, 120)}` };
+}
+
+// Algum fluxo dispara sozinho ao receber tag? (checagem de segurança)
+export async function spTriggersDeTag(
+  creds: SpCreds,
+  botId: string,
+): Promise<string[]> {
+  const r = await spGet(`/telegram/flows?bot_id=${botId}`, creds);
+  const flows = (r.body as { data?: { name: string; triggers?: unknown[] }[] } | null)?.data ?? [];
+  return flows
+    .filter((f) => {
+      const t = JSON.stringify(f.triggers ?? []);
+      return /tag/i.test(t);
+    })
+    .map((f) => f.name);
+}
+
 // ---- Fluxos (campanhas) de chatbot ----
 export type CampaignCategory = "aposta_segura" | "boas_vindas" | "outro";
 
